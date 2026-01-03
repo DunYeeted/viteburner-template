@@ -95,4 +95,37 @@ export class ExpandedNS {
     this.ns.rm(`temp/${this.ns.pid}.txt`);
     return data;
   }
+
+  /**
+   * Calculates the number of threads necessary to raise money on a server to a certain amount (Lowkey ripped from the source code).
+   * @returns The number of growThreads needed to grow a server to a certain amount of money, to the next smallest integer.
+   * @link https://github.com/bitburner-official/bitburner-src/blob/df6c5073698e76390e2d163d91df2fde72404c66/src/Server/ServerHelpers.ts#L93
+   * @remarks Essentially does the same thing as ns.formulas.hacking.growThreads() but for a much lower ram cost.
+   * @param server The name of the server
+   * @param startMoney How much money the server starts with, if undefined, it assumes starting at the current money.
+   * @param targetMoney How much money the server ends with, if undefined, it assumes the max money.
+   */
+  calcGrowThreads(
+    server: string,
+    startMoney: number = this.ns.getServerMoneyAvailable(server),
+    targetMoney: number = this.ns.getServerMaxMoney(server),
+  ) {
+    const serverGrowth = this.ns.getServerGrowth(server);
+
+    // Initial guess for the number of threads since we're doing a newtonian approximation and need one
+    let threads = (targetMoney - startMoney) / (1 + (targetMoney * (1 / 16) + startMoney * (15 / 16)) * serverGrowth);
+    let diff: number;
+    do {
+      // Each thread adds $1, this is how we account for that
+      const startingMoney = startMoney + threads;
+
+      const newThreads =
+        (threads - startingMoney * Math.log(startingMoney / targetMoney)) / (1 + startingMoney * serverGrowth);
+
+      diff = newThreads - threads;
+      threads = newThreads;
+    } while (Math.abs(diff) < 1);
+    // The actual function has some more checking for edge cases here which I might need to do if I run into the too often, but it should be fine enough
+    return Math.ceil(threads);
+  }
 }
