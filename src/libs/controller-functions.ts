@@ -73,20 +73,6 @@ export class RamNet {
     this.sortNetwork();
     return;
   }
-
-  public reserveBatch(b: Batch): void {
-    this.reserveRamOnServer(b.grow.server, calculateJobCost(b.grow));
-    this.reserveRamOnServer(b.hack.server, calculateJobCost(b.hack));
-    this.reserveRamOnServer(b.weaken1.server, calculateJobCost(b.weaken1));
-    this.reserveRamOnServer(b.weaken2.server, calculateJobCost(b.weaken2));
-  }
-
-  public undoReserveBatch(b: Batch): void {
-    this.undoReserve(b.grow.server, calculateJobCost(b.grow));
-    this.undoReserve(b.hack.server, calculateJobCost(b.hack));
-    this.undoReserve(b.weaken1.server, calculateJobCost(b.weaken1));
-    this.undoReserve(b.weaken2.server, calculateJobCost(b.weaken2));
-  }
 }
 
 /**
@@ -129,33 +115,41 @@ export function calculateServerlessJobCost(threads: number, jobType: jobTypes): 
 }
 
 export function isServerDefined(j: Job) {
-  return j.server == undefined;
+  return j.hostServer == undefined;
+}
+
+export function runJob(ns: NS, j: Job, targetServer: string) {
+  const script = j.type === `grow` ? `./workers/grow.js` : j.type === `hack` ? `./workers/hack.js` : `./workers/weaken.js`;
+
+  ns.exec(script, j.hostServer, )
 }
 
 // Only for experience farm batchers
 export interface IGBatch {
   grow: Job;
+  unreserveBatch(network: RamNet): void;
+  reserveBatch(network: RamNet): void;
+  assignBatch(ns: NS, endTime: number): void;
 }
-
 // For the first part of preppers, where the only job is weakening the server
 export interface IWBatch {
   weaken1: Job;
+  unreserveBatch(network: RamNet): void;
+  reserveBatch(network: RamNet): void;
+  assignBatch(ns: NS, endTime: number): void;
 }
-
 // For the second part of preppers, where you are maxing money and keeping security as low as possible
 export interface IGWBatch extends IGBatch {
   weaken2: Job;
 }
-
 // For full fledged batchers
 export interface IHWGWBatch extends IGWBatch, IWBatch {
   hack: Job;
 }
-
 export interface Job {
   readonly type: jobTypes;
   threads: number;
-  server: string;
+  hostServer: string;
 }
 
 type jobTypes = `hack` | `grow` | `weaken1` | `weaken2`;
