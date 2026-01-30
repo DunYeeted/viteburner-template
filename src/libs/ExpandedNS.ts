@@ -1,4 +1,5 @@
-import { NS, ScriptArg } from '@ns';
+// IMPORTANT: Make sure that this script has as little imports as possible, preferably none
+import { NS } from '@ns';
 
 export class ExpandedNS {
   public ns: NS;
@@ -10,7 +11,7 @@ export class ExpandedNS {
    * fullScan
    * @returns An array of all servers
    */
-  fullScan(): string[] {
+  scanServers(): string[] {
     const scanList: string[] = this.ns.scan();
     scanList.forEach((s) => {
       scanList.push(
@@ -23,7 +24,7 @@ export class ExpandedNS {
   }
 
   fullRoot(): void {
-    for (const server of this.fullScan()) {
+    for (const server of this.scanServers()) {
       switch(this.ns.getServerNumPortsRequired(server)) {
         case 5:
           try {
@@ -127,5 +128,37 @@ export class ExpandedNS {
     } while (Math.abs(diff) < 1);
     // The actual function has some more checking for edge cases here which I might need to do if I run into the too often, but it should be fine enough
     return Math.ceil(threads);
+  }
+
+  /**
+   * Read an object from a port as a specified type
+   * @param portNum Port to read from
+   * @returns The object as the type assigned
+   */
+  readObjFromPort<t>(portNum: number): t {
+    return JSON.parse(this.ns.readPort(portNum));
+  }
+
+  /**
+   * Terminates all scripts on all servers
+   * @param runHome Whether to restart adaOS
+   */
+  clearServers(runHome = true): never {
+    this.scanServers().forEach((server) => {
+      this.ns.killall(server, runHome);
+    });
+
+    this.ns.spawn(`./daemons/adaOS.js`);
+    // Spawn already terminates the current script, this is just for the script to properly return 'never'
+    this.ns.exit();
+  }
+
+  checkForDuplicateScripts(): boolean {
+    return this.ns.isRunning(this.ns.getScriptName(), this.ns.getHostname(), ...this.ns.args);
+  }
+
+  scriptError(errorMessage: string): never {
+    this.ns.tprint(errorMessage);
+    throw new Error(errorMessage);
   }
 }
