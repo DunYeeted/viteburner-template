@@ -4,7 +4,7 @@ import { ExpandedNS } from './ExpandedNS';
 export class RamNet {
   private network: { server: string, ram: number }[];
   constructor(nsx: ExpandedNS) {
-    const servers = nsx.fullScan();
+    const servers = nsx.scanServers();
     this.network = [];
     for (let i = 0; i < servers.length; i++) {
       this.network[i] = { server: servers[i], ram: nsx.emptyRam(servers[i]) };
@@ -75,56 +75,63 @@ export class RamNet {
   }
 }
 
-/**
- * Checks if a server has the maximum amount of money and minimum security
- * @param ns
- * @param server
- * @returns True if the server has its maximum money and minimum security level
- */
-export function isPrepped(ns: NS, server: string) {
-  return (
-    ns.getServerMaxMoney(server) == ns.getServerMoneyAvailable(server) &&
-    ns.getServerMinSecurityLevel(server) == ns.getServerSecurityLevel(server)
-  );
-}
+export abstract class Batcher {
+  abstract createSingleBatch(nsx: ExpandedNS, network: RamNet): IHWGWBatch | IGWBatch | IWBatch | IGBatch;
 
-export function calculateJobCost(j: Job): number {
-  switch (j.type) {
-    case 'hack':
-      return j.threads * jobRamCost.hack;
-    case 'grow':
-      return j.threads * jobRamCost.grow;
-    case 'weaken1':
-      return j.threads * jobRamCost.weaken;
-    case 'weaken2':
-      return j.threads * jobRamCost.weaken;
+  /**
+   * Checks if a server has the maximum amount of money and minimum security
+   * @param ns
+   * @param server
+   * @returns True if the server has its maximum money and minimum security level
+   */
+  public isPrepped(ns: NS, server: string) {
+    return (
+      ns.getServerMaxMoney(server) == ns.getServerMoneyAvailable(server) &&
+      ns.getServerMinSecurityLevel(server) == ns.getServerSecurityLevel(server)
+    );
   }
 }
 
-export function calculateServerlessJobCost(threads: number, jobType: jobTypes): number {
-  switch (jobType) {
-    case 'hack':
-      return threads * jobRamCost.hack;
-    case 'grow':
-      return threads * jobRamCost.grow;
-    case 'weaken1':
-      return threads * jobRamCost.weaken;
-    case 'weaken2':
-      return threads * jobRamCost.weaken;
+export class JobsHelpers {
+  static calculateJobCost(j: Job): number {
+    switch (j.type) {
+      case 'hack':
+        return j.threads * jobRamCost.hack;
+      case 'grow':
+        return j.threads * jobRamCost.grow;
+      case 'weaken1':
+        return j.threads * jobRamCost.weaken;
+      case 'weaken2':
+        return j.threads * jobRamCost.weaken;
+    }
   }
-}
 
-export function isServerDefined(j: Job) {
-  return j.hostServer == undefined;
+  static calculateServerlessJobCost(threads: number, jobType: jobTypes): number {
+    switch (jobType) {
+      case 'hack':
+        return threads * jobRamCost.hack;
+      case 'grow':
+        return threads * jobRamCost.grow;
+      case 'weaken1':
+        return threads * jobRamCost.weaken;
+      case 'weaken2':
+        return threads * jobRamCost.weaken;
+    }
+  }
+
+  static isServerDefined(j: Job) {
+    return j.hostServer == undefined;
+  }
 }
 
 export function runJob(ns: NS, j: Job, targetServer: string) {
-  const script = j.type === `grow` ? `./workers/grow.js` : j.type === `hack` ? `./workers/hack.js` : `./workers/weaken.js`;
+  const script =
+    j.type === `grow` ? `./workers/grow.js` : j.type === `hack` ? `./workers/hack.js` : `./workers/weaken.js`;
 
-  ns.exec(script, j.hostServer, )
+  ns.exec(script, j.hostServer, { temporary: true }, )
 }
 
-// Only for experience farm batchers
+// For experience farm batchers
 export interface IGBatch {
   grow: Job;
   unreserveBatch(network: RamNet): void;
