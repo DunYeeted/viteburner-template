@@ -1,5 +1,6 @@
 // IMPORTANT: Make sure that this script has as little imports as possible, preferably none
 import { NS } from '@ns';
+import { FilesData } from './FilesData';
 
 export class ExpandedNS {
   public ns: NS;
@@ -25,7 +26,7 @@ export class ExpandedNS {
 
   fullRoot(): void {
     for (const server of this.scanServers()) {
-      switch(this.ns.getServerNumPortsRequired(server)) {
+      switch (this.ns.getServerNumPortsRequired(server)) {
         case 5:
           try {
             this.ns.sqlinject(server);
@@ -168,7 +169,7 @@ export class ExpandedNS {
    * @returns True if a port-controller is currently running
    */
   checkForPortController(): boolean {
-    return this.ns.scriptRunning(PORT_CONTROLLER_FILENAME, `home`);
+    return this.ns.scriptRunning(FilesData['PortController'].path, `home`);
   }
 
   /**
@@ -176,24 +177,24 @@ export class ExpandedNS {
    * @param portName If defined port-controller will remember this port so other scripts can communicate with this script
    * @returns A free and open port
    */
-  async requestPort(portName: string | null): Promise<number> {
+  async requestPort(portName: string | null = null): Promise<number> {
     const requestArgs: PortRequest = {
-      type: RequestTypes.requesting,
+      type: RequestTypes.REQUESTING,
       identifier: this.ns.pid,
       portName: portName,
     };
-    this.ns.writePort(ReservedPorts.requestPort, JSON.stringify(requestArgs));
-    const fulfilledRequestPort = this.ns.getPortHandle(ReservedPorts.fulfilledRequestsPort);
+    this.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
+    const fulfilledRequestPort = this.ns.getPortHandle(ReservedPorts.FULFILLED_REQUESTS_PORT);
 
     do {
       // If there is something already, we want to read it immediately
       // If a lot of scripts keep trying to read from this port, that could cause some issues
       // By waiting for this, it should slow them down enough to not worry about it
       await this.ns.sleep(0);
-      if (fulfilledRequestPort.empty()) await this.ns.nextPortWrite(ReservedPorts.fulfilledRequestsPort);
+      if (fulfilledRequestPort.empty()) await this.ns.nextPortWrite(ReservedPorts.FULFILLED_REQUESTS_PORT);
 
       const possibleFulfilledRequest: FulfilledPortRequest = this.readObjFromPort<FulfilledPortRequest>(
-        ReservedPorts.fulfilledRequestsPort,
+        ReservedPorts.FULFILLED_REQUESTS_PORT,
       );
 
       // This is this script's fulfilled port request
@@ -203,11 +204,11 @@ export class ExpandedNS {
         // Clear the port before using
         this.ns.clearPort(possibleFulfilledRequest.portNum);
         // Throw an error if someone else already had this portName
-        if (possibleFulfilledRequest.portNum == PortErrors.DuplicatePortNameError)
+        if (possibleFulfilledRequest.portNum == PortErrors.DUPLICATE_NAME_ERROR)
           this.scriptError(
             `Port name is duplicated, usually happens when running a script twice when only supposed to be run once`,
           );
-        if (possibleFulfilledRequest.portNum == PortErrors.MalformedPortSearchError)
+        if (possibleFulfilledRequest.portNum == PortErrors.MALFORMED_PORT_SEARCH_ERROR)
           this.scriptError(`Port name was undefined`);
         return possibleFulfilledRequest.portNum;
       }
@@ -222,11 +223,11 @@ export class ExpandedNS {
   async searchForPort(portName: string): Promise<number> {
     const requestArgs: PortRequest = {
       identifier: this.ns.pid,
-      type: RequestTypes.searching,
+      type: RequestTypes.SEARCHING,
       portName: portName,
     };
-    this.ns.writePort(ReservedPorts.requestPort, JSON.stringify(requestArgs));
-    const fulfilledRequestPort = this.ns.getPortHandle(ReservedPorts.fulfilledRequestsPort);
+    this.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
+    const fulfilledRequestPort = this.ns.getPortHandle(ReservedPorts.FULFILLED_REQUESTS_PORT);
 
     do {
       // If there is something already, we want to read it immediately
@@ -236,13 +237,13 @@ export class ExpandedNS {
       if (fulfilledRequestPort.empty()) await fulfilledRequestPort.nextWrite();
 
       const possibleFulfilledRequest: FulfilledPortRequest = this.readObjFromPort<FulfilledPortRequest>(
-        ReservedPorts.fulfilledRequestsPort,
+        ReservedPorts.FULFILLED_REQUESTS_PORT,
       );
 
       if (possibleFulfilledRequest.scriptID == requestArgs.identifier) {
         // Discard this so no other script tries to read it.
         fulfilledRequestPort.read();
-        if (possibleFulfilledRequest.portNum == PortErrors.UndefinedPortNameError)
+        if (possibleFulfilledRequest.portNum == PortErrors.UNDEFINED_NAME_ERROR)
           throw new Error(
             `Port name is undefined, usually happens when asking for a script's port before the script exists`,
           );
@@ -257,40 +258,41 @@ export class ExpandedNS {
    */
   retirePort(portName: string | null): void {
     const requestArgs: PortRequest = {
-      type: RequestTypes.retiring,
+      type: RequestTypes.RETIRING,
       identifier: this.ns.pid,
       portName: portName,
     };
-    this.ns.writePort(ReservedPorts.requestPort, JSON.stringify(requestArgs));
+    this.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
   }
 
-  static PORT_CONTROLLER_SCRIPT_PATH = `./daemons/max-ports.js`;
-  static PORT_CONTROLLER_FILENAME = `max-ports.js`;
+  static filenameFromPath(path: string): string {
+    return path.substring(path.lastIndexOf(`/`));
+  }
 }
 
 // ---PORT-CONTROLLER---
 // Would've loved to keep this in the port-controller's file, but to minimize imports its necessary to put here
 // ---Errors---
 export enum PortErrors {
-  DuplicatePortNameError = -1,
-  UndefinedPortNameError = -2,
-  MalformedPortSearchError = -3,
+  DUPLICATE_NAME_ERROR = -1,
+  UNDEFINED_NAME_ERROR = -2,
+  MALFORMED_PORT_SEARCH_ERROR = -3,
 }
 
 export enum RequestTypes {
   /** @description Asking for a free port */
-  requesting,
+  REQUESTING,
   /** @description Looking for a port to another script */
-  searching,
+  SEARCHING,
   /** @description Port is no longer being used */
-  retiring,
+  RETIRING,
 }
 
 export enum ReservedPorts {
   /** @description Port number where scripts send a request */
-  requestPort = 1,
+  REQUEST_PORT = 1,
   /** @description Port number where scripts get a port back */
-  fulfilledRequestsPort = 2,
+  FULFILLED_REQUESTS_PORT = 2,
 }
 
 export interface FulfilledPortRequest {

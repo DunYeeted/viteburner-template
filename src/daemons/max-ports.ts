@@ -39,23 +39,23 @@ max-ports.js`);
                             |__|/ \\|__|                                                        \\|_________|
 Weaving scripts to their destination™`);
 
-  let nextFreePort = ReservedPorts.fulfilledRequestsPort + 1;
+  let nextFreePort = ReservedPorts.FULFILLED_REQUESTS_PORT + 1;
 
-  const pcPort = ns.getPortHandle(ReservedPorts.requestPort);
+  const pcPort = ns.getPortHandle(ReservedPorts.REQUEST_PORT);
 
   while (true) {
     // If the port has something, read it immediately. If it is empty, wait until something needs our attention
     if (pcPort.empty()) await pcPort.nextWrite();
 
-    const request = nsx.readObjFromPort<PortRequest>(ReservedPorts.requestPort);
-    ns.readPort(ReservedPorts.requestPort);
+    const request = nsx.readObjFromPort<PortRequest>(ReservedPorts.REQUEST_PORT);
+    ns.readPort(ReservedPorts.REQUEST_PORT);
 
     switch (request.type) {
       // --- REQUESTING ---
-      case RequestTypes.requesting:
+      case RequestTypes.REQUESTING:
         // Somebody already has this portname
         if (request.portName !== null && namedPorts.has(request.portName)) {
-          nsx.givePort({ scriptID: request.identifier, portNum: PortErrors.DuplicatePortNameError });
+          nsx.givePort({ scriptID: request.identifier, portNum: PortErrors.DUPLICATE_NAME_ERROR });
           break;
         }
 
@@ -72,17 +72,17 @@ Weaving scripts to their destination™`);
         break;
 
       // --- SEARCHING ---
-      case RequestTypes.searching:
+      case RequestTypes.SEARCHING:
         // Did not specify a name despite asking for one
         if (request.portName === null) {
-          nsx.givePort({ scriptID: request.identifier, portNum: PortErrors.MalformedPortSearchError });
+          nsx.givePort({ scriptID: request.identifier, portNum: PortErrors.MALFORMED_PORT_SEARCH_ERROR });
           break;
         }
         // eslint-disable-next-line no-case-declarations
         const namedPortNum = namedPorts.get(request.portName);
         // Port has not yet been requested/named
         if (namedPortNum === undefined) {
-          nsx.givePort({ scriptID: request.identifier, portNum: PortErrors.UndefinedPortNameError });
+          nsx.givePort({ scriptID: request.identifier, portNum: PortErrors.UNDEFINED_NAME_ERROR });
           break;
         }
         // Found the correct port
@@ -90,7 +90,7 @@ Weaving scripts to their destination™`);
         break;
 
       // --- RETIRING ---
-      case RequestTypes.retiring:
+      case RequestTypes.RETIRING:
         if (request.portName !== null) {
           // Delete the namedPort if necessary
           const deletedNamedPort = namedPorts.delete(request.portName);
