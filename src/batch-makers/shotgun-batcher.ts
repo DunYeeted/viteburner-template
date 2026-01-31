@@ -1,13 +1,12 @@
-import { requestPort } from '@/daemons/port-controller';
-import { ExpandedNS } from '@/libs/ExpandedNS';
-import { Batch, calculateServerlessJobCost, isPrepped, Job, RamNet } from '@/libs/controller-functions';
+import { ExpandedNS, PortErrors } from '@/libs/ExpandedNS';
+import { Batcher, BatchHelpers, hwgwBatch, IJob, JobHelpers, RamNet } from '@/libs/controller-functions';
 import { NS } from '@ns';
 
+/** @description How deep the shotgun batcher will go before stopping
+ *
+ * The function will change how much it steals by targetServerMaxMoney / (2^RESOLUTION)
+ */
 const RESOLUTION = 8;
-let SERVER_NAME: string;
-let SERVER_MAX_MONEY: number;
-let nsx: ExpandedNS;
-let network: RamNet;
 
 export async function main(ns: NS) {
   if (ns.args.length != 1 || typeof ns.args[0] !== `string`) {
@@ -16,135 +15,146 @@ export async function main(ns: NS) {
       ./batch-makers/shotgun-batcher.js foodnstuff`);
     return;
   }
-  nsx = new ExpandedNS(ns);
-  network = new RamNet(nsx);
-  SERVER_NAME = ns.args[0];
-  SERVER_MAX_MONEY = ns.getServerMaxMoney(SERVER_NAME);
+  const nsx = new ExpandedNS(ns);
 
-  const batches: Batch[] = [];
-  // Create batches
-  while (true) {
-    let bestBatch: Batch | undefined;
-    // Create one singular batch that is as large as possible
-    let UPPER = 0;
-    let LOWER = 1;
+  const targetName: string = ns.args[0];
+  const batcher = new ShotgunBatcher(nsx, new RamNet(nsx), targetName);
 
-    for (let i = 0; i < RESOLUTION; i++) {
-      const STEAL_PERCENT = 0.5 * (UPPER + LOWER);
-      const batch = createBatch(ns, STEAL_PERCENT);
-
-      // If we failed to create a batch at this steal percent, we need to lower the next steal percent
-      if (batch == undefined) {
-        UPPER = STEAL_PERCENT;
-      } else {
-        // If we succeeded we can try to increase the steal percent
-        LOWER = STEAL_PERCENT;
-        // Remember to update our best possible batch
-        bestBatch = batch;
-      }
-    }
-
-    // Once we've gone through everything above then we can check what the largest batch we can create is
-    // If we failed to create any batch, then stop making more
-    if (bestBatch == undefined) break;
-    // Otherwise, push the batch we created and start over creating another batch
-    network.reserveBatch(bestBatch);
-    batches.push(bestBatch);
-  }
+  const batches = batcher.createBatchesList();
 
   // Now that we're done, check if we made any batches
-  if (batches.length <= 0) {
-    ns.alert(`Failed to create any batches for ${SERVER_NAME}`);
-    return;
+  if (batches.length == 0) {
+    nsx.scriptError(`Failed to create any batches for ${batcher.targetName}`);
   }
 
-  const port = await requestPort(ns);
+  const portNum = await nsx.requestPort();
 
-  while (isPrepped(ns, SERVER_NAME)) {
-
+  while (Batcher.isPrepped(ns, targetName)) {
   }
 }
 
-function createBatch(ns: NS, percentStealing: number): Batch | undefined {
-  // First, check how many threads are necessary for each job
-  const hackThreads = Math.floor(ns.hackAnalyzeThreads(SERVER_NAME, percentStealing * SERVER_MAX_MONEY));
-  const hackCost = calculateServerlessJobCost(hackThreads, `hack`);
-  const growThreads = Math.ceil(ns.growthAnalyze(SERVER_NAME, 1 / (1 - percentStealing)));
-  const growCost = calculateServerlessJobCost(growThreads, `grow`);
-
-  let hackServer: string | undefined;
-  let growServer: string | undefined;
-
-  // Check if we can find a server that can support these threads
-  if (hackCost > growCost) {
-    hackServer = network.findSuitableServer(calculateServerlessJobCost(hackThreads, `hack`));
-    network.reserveRamOnServer(hackServer, hackCost);
-    growServer = network.findSuitableServer(calculateServerlessJobCost(growThreads, `grow`));
-    network.reserveRamOnServer(growServer, growCost);
-  } else {
-    growServer = network.findSuitableServer(calculateServerlessJobCost(growThreads, `grow`));
-    network.reserveRamOnServer(growServer, growCost);
-    hackServer = network.findSuitableServer(calculateServerlessJobCost(hackThreads, `hack`));
-    network.reserveRamOnServer(hackServer, hackCost);
+class ShotgunBatcher extends Batcher {
+  constructor(nsx: ExpandedNS, network: RamNet, target: string) {
+    super(nsx, network, target, nsx.ns.getServerMaxMoney(target), undefined, nsx.ns.getHackTime(target));
   }
 
-  // Fails if we cannot
-  if (hackServer == undefined || growServer == undefined) {
-    network.undoReserve(hackServer, hackCost);
-    network.undoReserve(growServer, growCost);
-    return undefined;
+  public set setPort(portNum: number) {
+    this.port = this.nsx.ns.getPortHandle(portNum);
   }
 
-  // Also check if we can find servers to host the weakens
-  // Technically, we should do the same thing as above, but it probably doesn't make a big difference so who cares
-  const weaken1Threads = Math.ceil(hackThreads / 25);
-  const weaken1Cost = calculateServerlessJobCost(weaken1Threads, `weaken1`);
-  const weaken2Threads = Math.ceil(growThreads / 12.5);
-  const weaken2Cost = calculateServerlessJobCost(weaken2Threads, `weaken2`);
+  public createBatchesList(): hwgwBatch[] {
+    const batches: hwgwBatch[] = [];
+    // Create batches
+    while (true) {
+      let bestBatch: hwgwBatch | undefined;
+      // Create one singular batch that is as large as possible
+      let maxSteal = 0;
+      let minSteal = 1;
 
-  const weaken1Server = network.findSuitableServer(weaken1Cost);
-  network.reserveRamOnServer(weaken1Server, weaken1Cost);
-  const weaken2Server = network.findSuitableServer(weaken2Cost);
-  network.reserveRamOnServer(weaken2Server, weaken2Cost);
+      for (let i = 0; i < RESOLUTION; i++) {
+        const stealPercent = 0.5 * (maxSteal + minSteal);
+        const batch = this.createSingleBatch(stealPercent);
 
-  if (weaken1Server == undefined || weaken2Server == undefined) {
-    network.undoReserve(weaken1Server, weaken1Cost);
-    network.undoReserve(weaken2Server, weaken2Cost);
-    return undefined;
+        // If we failed to create a batch at this steal percent, we need to lower the next steal percent
+        if (batch == undefined) {
+          maxSteal = stealPercent;
+        } else {
+          // If we succeeded we can try to increase the steal percent
+          minSteal = stealPercent;
+          // Remember to update our best possible batch
+          bestBatch = batch;
+        }
+      }
+
+      // Once we've gone through everything above then we can check what the largest batch we can create is
+      // If we failed to create any batch, then stop making more
+      if (bestBatch == undefined) break;
+      // Otherwise, push the batch we created and start over creating another batch
+      BatchHelpers.unreserveBatch(this.network, bestBatch);
+      batches.push(bestBatch);
+    }
+
+    return batches;
   }
 
-  const hackJob: Job = {
-    type: `hack`,
-    threads: hackThreads,
-    server: hackServer,
-  };
+  private createSingleBatch(percentStealing: number): hwgwBatch | undefined {
+    // First, check how many threads are necessary for each job
+    const hackThreads = Math.floor(this.nsx.ns.hackAnalyzeThreads(this.targetName, percentStealing * this.maxMoney));
+    const hackCost = JobHelpers.calculateServerlessJobCost(hackThreads, `hack`);
+    const growThreads = Math.ceil(
+      this.nsx.calcGrowThreads(this.targetName, this.maxMoney - hackThreads * this.nsx.ns.hackAnalyze(this.targetName)),
+    );
+    const growCost = JobHelpers.calculateServerlessJobCost(growThreads, `grow`);
 
-  const growJob: Job = {
-    type: `grow`,
-    threads: growThreads,
-    server: growServer,
-  };
+    let hackServer: string | undefined;
+    let growServer: string | undefined;
 
-  const weaken1Job: Job = {
-    type: `weaken1`,
-    threads: weaken1Threads,
-    server: weaken1Server,
-  };
+    // Check if we can find a server that can support these threads
+    if (hackCost > growCost) {
+      hackServer = this.network.findSuitableServer(JobHelpers.calculateServerlessJobCost(hackThreads, `hack`));
+      this.network.reserveRam(hackServer, hackCost);
+      growServer = this.network.findSuitableServer(JobHelpers.calculateServerlessJobCost(growThreads, `grow`));
+      this.network.reserveRam(growServer, growCost);
+    } else {
+      growServer = this.network.findSuitableServer(JobHelpers.calculateServerlessJobCost(growThreads, `grow`));
+      this.network.reserveRam(growServer, growCost);
+      hackServer = this.network.findSuitableServer(JobHelpers.calculateServerlessJobCost(hackThreads, `hack`));
+      this.network.reserveRam(hackServer, hackCost);
+    }
 
-  const weaken2Job: Job = {
-    type: `weaken2`,
-    threads: weaken2Threads,
-    server: weaken2Server,
-  };
+    // Fails if we cannot
+    if (hackServer == undefined || growServer == undefined) {
+      this.network.unreserveRam(hackServer, hackCost);
+      this.network.unreserveRam(growServer, growCost);
+      return undefined;
+    }
 
-  const batch = {
-    hack: hackJob,
-    weaken1: weaken1Job,
-    grow: growJob,
-    weaken2: weaken2Job,
-  };
+    // Also check if we can find servers to host the weakens
+    // Technically, we should do the same thing as above, but it probably doesn't make a big difference so who cares
+    const weaken1Threads = Math.ceil(hackThreads / 25);
+    const weaken1Cost = JobHelpers.calculateServerlessJobCost(weaken1Threads, `weaken1`);
+    const weaken2Threads = Math.ceil(growThreads / 12.5);
+    const weaken2Cost = JobHelpers.calculateServerlessJobCost(weaken2Threads, `weaken2`);
 
-  network.undoReserveBatch(batch);
+    const weaken1Server = this.network.findSuitableServer(weaken1Cost);
+    this.network.reserveRam(weaken1Server, weaken1Cost);
+    const weaken2Server = this.network.findSuitableServer(weaken2Cost);
+    this.network.reserveRam(weaken2Server, weaken2Cost);
 
-  return batch;
+    if (weaken1Server == undefined || weaken2Server == undefined) {
+      this.network.unreserveRam(weaken1Server, weaken1Cost);
+      this.network.unreserveRam(weaken2Server, weaken2Cost);
+      return undefined;
+    }
+
+    const hackJob: IJob = {
+      type: `hack`,
+      threads: hackThreads,
+      hostServer: hackServer,
+    };
+
+    const growJob: IJob = {
+      type: `grow`,
+      threads: growThreads,
+      hostServer: growServer,
+    };
+
+    const weaken1Job: IJob = {
+      type: `weaken1`,
+      threads: weaken1Threads,
+      hostServer: weaken1Server,
+    };
+
+    const weaken2Job: IJob = {
+      type: `weaken2`,
+      threads: weaken2Threads,
+      hostServer: weaken2Server,
+    };
+
+    const batch: hwgwBatch = [hackJob, weaken1Job, growJob, weaken2Job];
+
+    BatchHelpers.unreserveBatch(this.network, batch);
+
+    return batch;
+  }
 }
