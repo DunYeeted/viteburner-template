@@ -1,6 +1,19 @@
 import { NS } from '@ns';
 import { ExpandedNS } from './ExpandedNS';
 
+// Weaken is responsible for the desyncs upon leveling up
+// If weakentime decreases, that results in a 4x decrease time in hack and 3.2x time in hacks
+// For example, this means that if the change is too large, or grows to be too large, some weaken1s will occur before their corresponding hack
+
+/**
+ * @description The time difference between two workers in a batch ending, in ms.
+ *
+ * @default TIME_BETWEEN_WORKERS = 5
+ *
+ * @example hack ends |---5 ms---| weaken1 ends
+ */
+const TIME_BETWEEN_WORKERS = 5;
+
 export class RamNet {
   // Needs to be an array so we can sort it, which is necessary for largestServer
   private network: { server: string; ram: number }[];
@@ -45,7 +58,7 @@ export class RamNet {
    * 'Reserves' a certain amount of ram on a server so that no other script tries to use the same ram.
    * Also sorts the servers after reserving.
    */
-  public reserveRamOnServer(server: string | undefined, ram: number): void {
+  public reserveRam(server: string | undefined, ram: number): void {
     if (server == undefined) return;
 
     const s = this.network.find((s) => {
@@ -63,7 +76,7 @@ export class RamNet {
   /**
    * Adds ram to a server, effectively undoing any reservations from before
    */
-  public undoReserve(server: string | undefined, ram: number): void {
+  public unreserveRam(server: string | undefined, ram: number): void {
     if (server == undefined) return;
 
     const s = this.network.find((s) => {
@@ -80,7 +93,7 @@ export class RamNet {
 }
 
 export abstract class Batcher {
-  abstract createSingleBatch(nsx: ExpandedNS, network: RamNet): IHWGWBatch | IGWBatch | IWBatch | IGBatch;
+  abstract createSingleBatch(nsx: ExpandedNS, network: RamNet): hwgwBatch | gwBatch | wBatch | gBatch;
 
   /**
    * Checks if a server has the maximum amount of money and minimum security
@@ -97,7 +110,7 @@ export abstract class Batcher {
 }
 
 export class JobHelpers {
-  static calculateJobCost(j: Job): number {
+  static calculateJobCost(j: IJob): number {
     switch (j.type) {
       case 'hack':
         return j.threads * jobRamCost.hack;
@@ -123,40 +136,78 @@ export class JobHelpers {
     }
   }
 
-  static isServerDefined(j: Job) {
+  static isServerDefined(j: IJob) {
     return j.hostServer == undefined;
   }
 }
 
-export function runJob(ns: NS, j: IWorker) {
-  const script =
-    j.type === `grow` ? `./workers/grow.js` : j.type === `hack` ? `./workers/hack.js` : `./workers/weaken.js`;
+export class BatchHelpers {
+  /** Unreserves the ram for this batch on ramnet */
+  static reserveBatch(network: RamNet, batch: gBatch | wBatch | gwBatch | hwgwBatch): void {
+    for (const job of batch) {
+      network.reserveRam(job.hostServer, JobHelpers.calculateJobCost(job));
+    }
+  }
 
-  ns.exec(script, j.hostServer, { temporary: true }, JSON.stringify(j));
+  /** Reserves the ram for this batch on ramnet */
+  static unreserveBatch(network: RamNet, batch: gBatch | wBatch | gwBatch | hwgwBatch): void {
+    for (const job of batch) {
+      network.unreserveRam(job.hostServer, JobHelpers.calculateJobCost(job));
+    }
+  }
+
+  /**
+   * Executes jobs in a batch on servers
+   * */
+  static assignBatch(ns: NS, batch: gBatch | wBatch | gwBatch | hwgwBatch, batchArgs: WorkerArgs): void {
+    let i = 0;
+    for (const job of batch) {
+      BatchHelpers.runJob(ns, {
+        hostServer: job.hostServer,
+        type: job.type,
+
+        target: batchArgs.target,
+
+        endTime: batchArgs.endTime + i * TIME_BETWEEN_WORKERS,
+        workTime: batchArgs.weakenTime,
+
+        portNum: batchArgs.portNum,
+      });
+      i++;
+    }
+  }
+
+  static runJob(ns: NS, j: IWorker): number {
+    const script =
+      j.type === `grow` ? `./workers/grow.js` : j.type === `hack` ? `./workers/hack.js` : `./workers/weaken.js`;
+
+    return ns.exec(script, j.hostServer, { temporary: true }, JSON.stringify(j));
+  }
 }
 
-// For experience farm batchers
-export interface IGBatch {
-  grow: Job;
-}
-// For the first part of preppers, where the only job is weakening the server
-export interface IWBatch {
-  weaken1: Job;
-  unreserveBatch(network: RamNet): void;
-  reserveBatch(network: RamNet): void;
-  assignBatch(ns: NS, endTime: number): void;
-}
-// For the second part of preppers, where you are maxing money and keeping security as low as possible
-export interface IGWBatch extends IGBatch {
-  weaken2: Job;
-}
-// For full fledged batchers
-export interface IHWGWBatch extends IGWBatch, IWBatch {
-  hack: Job;
-}
+/**
+ * For experience farm batchers
+ * Types: ['grow']
+ */
+export type gBatch = [IJob];
+/**
+ * For the first stage of server-preparers, where the only job is weakening the server
+ * Types: ['weaken']
+ * */
+export type wBatch = [IJob];
+/**
+ * For the second part of preppers, where you are maxing money and keeping security as low as possible
+ * Types in order: ['grow', 'weaken']
+ * */
+export type gwBatch = [IJob, IJob];
+/**
+ * For full fledged batchers
+ * Types in order: ['hack', 'weaken1', 'grow', 'weaken2']
+ */
+export type hwgwBatch = [IJob, IJob, IJob, IJob];
 
-/** Holds the necessary for running the script logistically */
-export interface Job {
+/** Holds the necessary for running the script in servers */
+export interface IJob {
   readonly type: jobTypes;
   threads: number;
   hostServer: string;
@@ -164,14 +215,31 @@ export interface Job {
 
 /** The args that get passed to a HGW script */
 export interface IWorker {
+  /** @description The server this job runs on (Used in log) */
   readonly hostServer: string;
+  /** @description This job's type (Used in log) */
   readonly type: jobTypes;
 
+  /** @description The server to target */
   readonly target: string;
 
+  /** @description When this job should finish */
   readonly endTime: number;
+  /** @description How long the corresponding function will take to execute */
   readonly workTime: number;
-  readonly osPort: number;
+  /** @description Number of the port for the batcher */
+  readonly portNum: number;
+}
+
+export interface WorkerArgs {
+  /** @description The time at which the first job of a batch should finish */
+  readonly endTime: number;
+  /** @description The server the jobs should target */
+  readonly target: string;
+  /** @description How long each weaken will take on a server, other timingscan be determined from this */
+  readonly weakenTime: number;
+  /** @description The port for the batcher */
+  readonly portNum: number;
 }
 
 type jobTypes = `hack` | `grow` | `weaken1` | `weaken2`;
