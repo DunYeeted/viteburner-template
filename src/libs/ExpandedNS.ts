@@ -136,7 +136,7 @@ export class ExpandedNS {
    * @returns The object as the type assigned
    */
   readObjFromPort<t>(portNum: number): t {
-    return JSON.parse(this.ns.readPort(portNum));
+    return JSON.parse(this.ns.peek(portNum));
   }
 
   /**
@@ -154,11 +154,154 @@ export class ExpandedNS {
   }
 
   checkForDuplicateScripts(): boolean {
-    return this.ns.isRunning(this.ns.getScriptName(), this.ns.getHostname(), ...this.ns.args);
+    return this.ns.scriptRunning(this.ns.getScriptName(), this.ns.getHostname());
   }
 
   scriptError(errorMessage: string): never {
     this.ns.tprint(errorMessage);
+    this.ns.print(`Error!\n` + errorMessage);
     throw new Error(errorMessage);
   }
+
+  /**
+   * Check for if a port-controller is running, since most scripts need it.
+   * @returns True if a port-controller is currently running
+   */
+  checkForPortController(): boolean {
+    return this.ns.scriptRunning(PORT_CONTROLLER_FILENAME, `home`);
+  }
+
+  /**
+   * Request a port from port-controller
+   * @param portName If defined port-controller will remember this port so other scripts can communicate with this script
+   * @returns A free and open port
+   */
+  async requestPort(portName: string | null): Promise<number> {
+    const requestArgs: PortRequest = {
+      type: RequestTypes.requesting,
+      identifier: this.ns.pid,
+      portName: portName,
+    };
+    this.ns.writePort(ReservedPorts.requestPort, JSON.stringify(requestArgs));
+    const fulfilledRequestPort = this.ns.getPortHandle(ReservedPorts.fulfilledRequestsPort);
+
+    do {
+      // If there is something already, we want to read it immediately
+      // If a lot of scripts keep trying to read from this port, that could cause some issues
+      // By waiting for this, it should slow them down enough to not worry about it
+      await this.ns.sleep(0);
+      if (fulfilledRequestPort.empty()) await this.ns.nextPortWrite(ReservedPorts.fulfilledRequestsPort);
+
+      const possibleFulfilledRequest: FulfilledPortRequest = this.readObjFromPort<FulfilledPortRequest>(
+        ReservedPorts.fulfilledRequestsPort,
+      );
+
+      // This is this script's fulfilled port request
+      if (possibleFulfilledRequest.scriptID == requestArgs.identifier) {
+        // Remove from the queue so other scripts don't try to read this
+        fulfilledRequestPort.read();
+        // Clear the port before using
+        this.ns.clearPort(possibleFulfilledRequest.portNum);
+        // Throw an error if someone else already had this portName
+        if (possibleFulfilledRequest.portNum == PortErrors.DuplicatePortNameError)
+          this.scriptError(
+            `Port name is duplicated, usually happens when running a script twice when only supposed to be run once`,
+          );
+        if (possibleFulfilledRequest.portNum == PortErrors.MalformedPortSearchError)
+          this.scriptError(`Port name was undefined`);
+        return possibleFulfilledRequest.portNum;
+      }
+    } while (true);
+  }
+
+  /**
+   * Find a port from the portName
+   * @param portName The port to search for
+   * @returns The portNum that portName is assigned to
+   */
+  async searchForPort(portName: string): Promise<number> {
+    const requestArgs: PortRequest = {
+      identifier: this.ns.pid,
+      type: RequestTypes.searching,
+      portName: portName,
+    };
+    this.ns.writePort(ReservedPorts.requestPort, JSON.stringify(requestArgs));
+    const fulfilledRequestPort = this.ns.getPortHandle(ReservedPorts.fulfilledRequestsPort);
+
+    do {
+      // If there is something already, we want to read it immediately
+      // If a lot of scripts keep trying to read from this port, that could cause some issues
+      // By waiting for this, it should slow them down enough to not worry about it
+      await this.ns.sleep(0);
+      if (fulfilledRequestPort.empty()) await fulfilledRequestPort.nextWrite();
+
+      const possibleFulfilledRequest: FulfilledPortRequest = this.readObjFromPort<FulfilledPortRequest>(
+        ReservedPorts.fulfilledRequestsPort,
+      );
+
+      if (possibleFulfilledRequest.scriptID == requestArgs.identifier) {
+        // Discard this so no other script tries to read it.
+        fulfilledRequestPort.read();
+        if (possibleFulfilledRequest.portNum == PortErrors.UndefinedPortNameError)
+          throw new Error(
+            `Port name is undefined, usually happens when asking for a script's port before the script exists`,
+          );
+        return possibleFulfilledRequest.portNum;
+      }
+    } while (true);
+  }
+
+  /**
+   * Gives up a port for others to use
+   * @param portName If defined, the controller will forget this portName
+   */
+  retirePort(portName: string | null): void {
+    const requestArgs: PortRequest = {
+      type: RequestTypes.retiring,
+      identifier: this.ns.pid,
+      portName: portName,
+    };
+    this.ns.writePort(ReservedPorts.requestPort, JSON.stringify(requestArgs));
+  }
+
+  static PORT_CONTROLLER_SCRIPT_PATH = `./daemons/max-ports.js`;
+  static PORT_CONTROLLER_FILENAME = `max-ports.js`;
+}
+
+// ---PORT-CONTROLLER---
+// Would've loved to keep this in the port-controller's file, but to minimize imports its necessary to put here
+// ---Errors---
+export enum PortErrors {
+  DuplicatePortNameError = -1,
+  UndefinedPortNameError = -2,
+  MalformedPortSearchError = -3,
+}
+
+export enum RequestTypes {
+  /** @description Asking for a free port */
+  requesting,
+  /** @description Looking for a port to another script */
+  searching,
+  /** @description Port is no longer being used */
+  retiring,
+}
+
+export enum ReservedPorts {
+  /** @description Port number where scripts send a request */
+  requestPort = 1,
+  /** @description Port number where scripts get a port back */
+  fulfilledRequestsPort = 2,
+}
+
+export interface FulfilledPortRequest {
+  readonly scriptID: number;
+  readonly portNum: number;
+}
+
+export interface PortRequest {
+  /** @description Type of the request */
+  readonly type: RequestTypes;
+  /** @description Identifier for the script, usually the script's pid, but if it is retiring a port, it is the port's number */
+  readonly identifier: number;
+  readonly portName: string | null;
 }
