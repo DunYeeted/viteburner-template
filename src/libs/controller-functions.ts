@@ -2,10 +2,14 @@ import { NS } from '@ns';
 import { ExpandedNS } from './ExpandedNS';
 
 export class RamNet {
-  private network: { server: string, ram: number }[];
+  // Needs to be an array so we can sort it, which is necessary for largestServer
+  private network: { server: string; ram: number }[];
+
   constructor(nsx: ExpandedNS) {
     const servers = nsx.scanServers();
     this.network = [];
+
+    // Create an array from the servers we scanned
     for (let i = 0; i < servers.length; i++) {
       this.network[i] = { server: servers[i], ram: nsx.emptyRam(servers[i]) };
     }
@@ -92,7 +96,7 @@ export abstract class Batcher {
   }
 }
 
-export class JobsHelpers {
+export class JobHelpers {
   static calculateJobCost(j: Job): number {
     switch (j.type) {
       case 'hack':
@@ -124,19 +128,16 @@ export class JobsHelpers {
   }
 }
 
-export function runJob(ns: NS, j: Job, targetServer: string) {
+export function runJob(ns: NS, j: IWorker) {
   const script =
     j.type === `grow` ? `./workers/grow.js` : j.type === `hack` ? `./workers/hack.js` : `./workers/weaken.js`;
 
-  ns.exec(script, j.hostServer, { temporary: true }, )
+  ns.exec(script, j.hostServer, { temporary: true }, JSON.stringify(j));
 }
 
 // For experience farm batchers
 export interface IGBatch {
   grow: Job;
-  unreserveBatch(network: RamNet): void;
-  reserveBatch(network: RamNet): void;
-  assignBatch(ns: NS, endTime: number): void;
 }
 // For the first part of preppers, where the only job is weakening the server
 export interface IWBatch {
@@ -153,10 +154,24 @@ export interface IGWBatch extends IGBatch {
 export interface IHWGWBatch extends IGWBatch, IWBatch {
   hack: Job;
 }
+
+/** Holds the necessary for running the script logistically */
 export interface Job {
   readonly type: jobTypes;
   threads: number;
   hostServer: string;
+}
+
+/** The args that get passed to a HGW script */
+export interface IWorker {
+  readonly hostServer: string;
+  readonly type: jobTypes;
+
+  readonly target: string;
+
+  readonly endTime: number;
+  readonly workTime: number;
+  readonly osPort: number;
 }
 
 type jobTypes = `hack` | `grow` | `weaken1` | `weaken2`;
