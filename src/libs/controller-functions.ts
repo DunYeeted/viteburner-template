@@ -159,7 +159,7 @@ export class BatchHelpers {
   /**
    * Executes jobs in a batch on servers
    * */
-  static assignBatch(ns: NS, batch: gBatch | wBatch | gwBatch | hwgwBatch, batchArgs: WorkerArgs): void {
+  static runBatch(ns: NS, batch: gBatch | wBatch | gwBatch | hwgwBatch, batchArgs: WorkerArgs): void {
     let i = 0;
     for (const job of batch) {
       BatchHelpers.runJob(ns, {
@@ -186,34 +186,38 @@ export class BatchHelpers {
 }
 
 /**
- * For experience farm batchers
+ * @description For experience farm batchers
+ *
  * Types: ['grow']
  */
 export type gBatch = [IJob];
 /**
- * For the first stage of server-preparers, where the only job is weakening the server
+ * @description For the first stage of server-preparers, where the only job is weakening the server
+ *
  * Types: ['weaken']
  * */
 export type wBatch = [IJob];
 /**
- * For the second part of preppers, where you are maxing money and keeping security as low as possible
+ * @descriptionFor the second part of preppers, where you are maxing money and keeping security as low as possible
+ *
  * Types in order: ['grow', 'weaken']
  * */
 export type gwBatch = [IJob, IJob];
 /**
- * For full fledged batchers
+ * @description For full fledged batchers
+ *
  * Types in order: ['hack', 'weaken1', 'grow', 'weaken2']
  */
 export type hwgwBatch = [IJob, IJob, IJob, IJob];
 
-/** Holds the necessary for running the script in servers */
+/** @description Holds the necessary for running the script in servers */
 export interface IJob {
   readonly type: jobTypes;
   threads: number;
   hostServer: string;
 }
 
-/** The args that get passed to a HGW script */
+/** @description The args that get passed to a HGW script */
 export interface IWorker {
   /** @description The server this job runs on (Used in log) */
   readonly hostServer: string;
@@ -231,6 +235,7 @@ export interface IWorker {
   readonly portNum: number;
 }
 
+/** @description Info only needed once actually running the job */
 export interface WorkerArgs {
   /** @description The time at which the first job of a batch should finish */
   readonly endTime: number;
