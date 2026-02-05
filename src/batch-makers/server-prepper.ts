@@ -15,7 +15,10 @@ export async function main(ns: NS) {
   const targetName = ns.args[0];
   const pBatcher = new PreparerBatcher(nsx, new RamNet(nsx), targetName);
 
+  const portNum = await nsx.requestPort();
+  pBatcher.port = portNum;
   const hackLvl = ns.getHackingLevel();
+
   // ---Logging function---
   let endTime = 0;
   let prospectedMoney = 0;
@@ -33,7 +36,7 @@ export async function main(ns: NS) {
     ns.print(`Active workers: ${pBatcher.runningScripts.length}`);
     ns.print(`ETA: ${ns.tFormat(endTime)}`);
   }, 1000);
-  const portNum = await nsx.requestPort();
+
   // Remember to clear the timer and retire the port eventually
   ns.atExit(() => {
     nsx.retirePort(portNum);
