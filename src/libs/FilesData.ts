@@ -6,32 +6,32 @@ export const FilesData: {
     filename: `max-ports.js`,
     ramCost: 0,
   },
-  hackWorker: {
+  HackWorker: {
     path: `./workers/hack.js`,
     filename: `hack.js`,
-    ramCost: 0,
+    ramCost: 1.7,
   },
-  growWorker: {
+  GrowWorker: {
     path: `./workers/grow.js`,
     filename: `grow.js`,
-    ramCost: 0,
+    ramCost: 1.75,
   },
-  weakenWorker: {
+  WeakenWorker: {
     path: `./workers/weaken.js`,
     filename: `weaken.js`,
-    ramCost: 0,
+    ramCost: 1.75,
   },
   os: {
     path: `./daemons/adaOS.js`,
     filename: `adaOS.js`,
     ramCost: 0,
   },
-  batcher: {
+  Batcher: {
     path: `./batch-makers/shotgun-batcher.js`,
     filename: `shotgun-batcher.js`,
     ramCost: 0,
   },
-  serverPreparer: {
+  ServerPreparer: {
     path: `./batch-makers/server-prepper.js`,
     filename: `server-preppers.js`,
     ramCost: 0,
