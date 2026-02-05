@@ -12,6 +12,6 @@ export async function main(ns: NS) {
   const endTime = baseEndTime + args.batchNum * TIME_BETWEEN_BATCHES + args.jobNum * TIME_BETWEEN_JOBS;
   const waitingTime = endTime - args.workTime;
 
-  await ns.hack(args.target, { additionalMsec: waitingTime });
+  await ns.grow(args.target, { additionalMsec: waitingTime });
   ns.writePort(args.portNum, ns.pid);
 }

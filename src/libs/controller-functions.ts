@@ -1,41 +1,32 @@
-import { NetscriptPort, NS } from '@ns';
-import { ExpandedNS } from './ExpandedNS';
+import { NS } from '@ns';
+import { ExpandedNS, PortErrors } from './ExpandedNS';
 import { FilesData } from './FilesData';
 
 // Weaken is responsible for the desyncs upon leveling up
 // If weakentime decreases, that results in a 4x decrease time in hack and 3.2x time in hacks
-// For example, this means that if the change is too large, or grows to be too large, some weaken1s will occur before their corresponding hack
-
-/**
- * @description The time difference between two workers in a batch ending, in ms.
- *
- * @default TIME_BETWEEN_WORKERS = 5
- *
- * @example hack ends |---5 ms---| weaken1 ends
- */
-const TIME_BETWEEN_WORKERS = 5;
-
-const CONNECTION_ATTEMPTS = 5;
-const RECONNECT_TIME = 5;
+// Therefore, this means that if the change is too large, or grows to be too large, some weaken1s will occur before their corresponding hack
+/** The time between each batch */
+export const TIME_BETWEEN_BATCHES = 1;
+export const TIME_BETWEEN_JOBS = 1;
 
 export class RamNet {
   // Needs to be an array so we can sort it, which is necessary for largestServer
-  private network: { server: string; ram: number }[];
+  private network: { name: string; ram: number }[];
 
   constructor(nsx: ExpandedNS) {
-    const servers = nsx.scanServers();
+    const servers = nsx.scanAdminServers();
     this.network = [];
 
     // Create an array from the servers we scanned
     for (let i = 0; i < servers.length; i++) {
-      this.network[i] = { server: servers[i], ram: nsx.emptyRam(servers[i]) };
+      this.network[i] = { name: servers[i], ram: nsx.emptyRam(servers[i]) };
     }
     this.sortNetwork();
   }
 
-  get largestServer(): string {
+  get largestServer(): { name: string; ram: number } {
     this.sortNetwork();
-    return this.network[0].server;
+    return this.network[0];
   }
 
   private sortNetwork(): void {
@@ -55,7 +46,7 @@ export class RamNet {
     });
 
     if (s == undefined) return undefined;
-    return s.server;
+    return s.name;
   }
 
   /**
@@ -66,7 +57,7 @@ export class RamNet {
     if (server == undefined) return;
 
     const s = this.network.find((s) => {
-      return s.server === server;
+      return s.name === server;
     });
 
     if (s == undefined) throw new Error(`${server} not defined on network!`);
@@ -84,7 +75,7 @@ export class RamNet {
     if (server == undefined) return;
 
     const s = this.network.find((s) => {
-      return s.server === server;
+      return s.name === server;
     });
 
     if (s == undefined) throw new Error(`${server} not defined on network!`);
@@ -94,20 +85,28 @@ export class RamNet {
     this.sortNetwork();
     return;
   }
+
+  get totalRam(): number {
+    return this.network.reduce((a, c) => {
+      return a + c.ram;
+    }, 0);
+  }
 }
 
 export abstract class Batcher {
+  public abstract runningScripts: number[];
   constructor(
     protected readonly nsx: ExpandedNS,
     protected readonly network: RamNet,
     readonly targetName: string,
     protected readonly maxMoney: number,
-    protected port: NetscriptPort | undefined,
-    /** @description How long each weaken will take on a server, other timingscan be determined from this */
+    protected port: number | undefined,
+    /** @description How long each weaken will take on a server, other timings can be determined from this */
     readonly hackTime: number,
+    public readonly timeBetweenWorkers = 5,
   ) {}
 
-  abstract createBatchesList(nsx: ExpandedNS, network: RamNet): hwgwBatch[] | gwBatch[] | wBatch[] | gBatch[];
+  abstract createBatchesList(): hwgwBatch[] | (gwBatch | wBatch)[] | gBatch[];
 
   /**
    * Checks if a server has the maximum amount of money and minimum security
@@ -124,100 +123,47 @@ export abstract class Batcher {
 
   /**
    * @description Executes jobs in a batch on servers
+   * @returns An array of pids for the started scripts
    *
    * Pauses after each one to redetermine time offsets, which could lower efficiency (especially in smaller batches).
    * The pause also prevents the port from filling up.
    * */
-  public runBatch(batch: gBatch | wBatch | gwBatch | hwgwBatch, batchArgs: WorkerArgs): void {
-    const workers: [number, JobTypes, number][] = [];
+  public async runBatch(batch: gBatch | wBatch | gwBatch | hwgwBatch, batchNum: number): Promise<number[]> {
+    return batch.map((job, jobNum) => {
+      return this.runJob({
+        hostServer: job.hostServer,
+        type: job.type,
 
-    for (let i = 0; i < batch.length; i++) {
-      const job = batch[i];
-      workers.push([
-        this.runJob({
-          hostServer: job.hostServer,
-          type: job.type,
+        target: this.targetName,
 
-          target: batchArgs.target,
+        workTime:
+          job.type == JobTypes.hack
+            ? this.hackTime
+            : job.type == JobTypes.grow
+            ? this.hackTime * 3.2
+            : this.hackTime * 4,
 
-          endTime: batchArgs.endTime + i * TIME_BETWEEN_WORKERS,
-          workTime: job.type === `grow` ? this.hackTime * 3.2 : job.type === `hack` ? this.hackTime : this.hackTime * 4,
-
-          portNum: batchArgs.portNum,
-        }),
-        job.type,
-        performance.now(),
-      ]);
-    }
-  }
-
-  protected runJob(j: IWorker): number {
-    const script =
-      j.type === `grow`
-        ? FilesData[`growWorker`].path
-        : j.type === `hack`
-        ? FilesData[`hackWorker`].path
-        : FilesData[`weakenWorker`].path;
-
-    return this.nsx.ns.exec(script, j.hostServer, { temporary: true }, JSON.stringify(j));
+        portNum: this.port ?? PortErrors.UNDEFINED_PORT_NUM_ERROR,
+        batchNum: batchNum,
+        jobNum: jobNum,
+      });
+    });
   }
 
   /**
-   * @description Changes ending time of workers so that occur in order regardless of their startTime
-   *
-   * Depends on behavior of hgw scripts
-   * @param workers A tuple of the pid, type, and startTime (from performance.now()) of the script
-   * @returns An array of the pids for the scripts it started, or undefined if it cancelled early
+   * Runs a job
+   * @param job Job to run
+   * @returns pid of the script
    */
-  public async bufferTimeChange(
-    workers: [pid: number, type: JobTypes, startTime: number][],
-  ): Promise<number[] | undefined> {
-    if (this.port === undefined) {
-      this.nsx.scriptError(`Port of ${this.nsx.ns.getScriptName()} was undefined`);
-    }
+  protected runJob(job: IWorker): number {
+    const script =
+      job.type == JobTypes.hack
+        ? JobHelpers.Paths.hack
+        : job.type == JobTypes.grow
+        ? JobHelpers.Paths.grow
+        : JobHelpers.Paths.weaken;
 
-    let accumulatedWaitTime = 0;
-    for (let job = 0; job < workers.length; job++) {
-      // Try to connect right now
-      for (let i = 0; i <= CONNECTION_ATTEMPTS; i++) {
-        if (this.port.empty()) {
-          // If we failed too many times, stop the batch from running
-          if (i == CONNECTION_ATTEMPTS) {
-            this.terminateWorkers(
-              workers.map((worker) => {
-                return worker[0];
-              }),
-            );
-            this.nsx.ns.print(`Failed to run a batch`);
-            return;
-          }
-          // Otherwise, try to reconnect again later
-          await this.nsx.ns.asleep(RECONNECT_TIME);
-        }
-      }
-      // Get the pid
-      const scriptPid: number = this.port.read();
-      const script = workers[job];
-      // If this script wasn't the right one, then terminate
-      if (scriptPid != script[0]) {
-        this.terminateWorkers(
-          workers.map((worker) => {
-            return worker[0];
-          }),
-        );
-        return;
-      }
-      // Send the port an offset
-      // Offset is the wait time from the other scripts so it runs after them,
-      // The wait time between execing the script and eventually reading the port right now
-      const timeBetweenStartAndRead = performance.now() - script[2];
-      this.port.write(JSON.stringify([scriptPid, accumulatedWaitTime + timeBetweenStartAndRead]));
-      accumulatedWaitTime += timeBetweenStartAndRead;
-    }
-
-    return workers.map(([pid, _x, _y]) => {
-      return pid;
-    });
+    return this.nsx.ns.exec(script, job.hostServer, { temporary: true }, JSON.stringify(job));
   }
 
   /**
@@ -229,41 +175,92 @@ export abstract class Batcher {
       this.nsx.ns.kill(pid);
     });
   }
+
+  /**
+   * Send a start a start signal to the queued workers
+   *
+   * @param endTime The endTime of the first worker, for a batcher it would be currentTime + weakenTime * 4. The rest of the workers will calculate their own endTime
+   *
+   * @example Batcher.startSignal(performance.now() + Batcher.weakenTime());
+   */
+  public async sendStartSignal(endTime: number) {
+    this.nsx.ns.writePort(this.port ?? PortErrors.UNDEFINED_PORT_NUM_ERROR, JSON.stringify(endTime));
+    await this.nsx.ns.asleep(1000);
+    this.nsx.ns.clearPort(this.port ?? PortErrors.UNDEFINED_PORT_NUM_ERROR);
+  }
+
+  get weakenTime(): number {
+    return this.hackTime * 4;
+  }
+
+  get growTime(): number {
+    return this.hackTime * 3.2;
+  }
+
+  get totalRam(): number {
+    return this.network.totalRam;
+  }
 }
 
 export class JobHelpers {
   static calculateJobCost(j: IJob): number {
     switch (j.type) {
-      case 'hack':
-        return j.threads * jobRamCost.hack;
-      case 'grow':
-        return j.threads * jobRamCost.grow;
-      case 'weaken1':
-        return j.threads * jobRamCost.weaken;
-      case 'weaken2':
-        return j.threads * jobRamCost.weaken;
+      case JobTypes.hack:
+        return j.threads * this.ThreadCosts.hack;
+      case JobTypes.grow:
+        return j.threads * this.ThreadCosts.grow;
+      case JobTypes.weaken1:
+        return j.threads * this.ThreadCosts.weaken;
+      case JobTypes.weaken2:
+        return j.threads * this.ThreadCosts.weaken;
     }
   }
 
   static calculateServerlessJobCost(threads: number, jobType: JobTypes): number {
     switch (jobType) {
-      case 'hack':
-        return threads * jobRamCost.hack;
-      case 'grow':
-        return threads * jobRamCost.grow;
-      case 'weaken1':
-        return threads * jobRamCost.weaken;
-      case 'weaken2':
-        return threads * jobRamCost.weaken;
+      case JobTypes.hack:
+        return threads * this.ThreadCosts.hack;
+      case JobTypes.grow:
+        return threads * this.ThreadCosts.grow;
+      case JobTypes.weaken1:
+        return threads * this.ThreadCosts.weaken;
+      case JobTypes.weaken2:
+        return threads * this.ThreadCosts.weaken;
     }
   }
 
   static isServerDefined(j: IJob) {
     return j.hostServer == undefined;
   }
+
+  /** @description Calculates the number of threads for a given hackThread count */
+  static calcWeaken1Threads(hackThreads: number) {
+    return Math.ceil(hackThreads / 25);
+  }
+
+  /** @description Calculates the number of threads for a given growThread count */
+  static calcWeaken2Threads(growThreads: number) {
+    return Math.ceil(growThreads / 12.5);
+  }
+
+  /** @description Cost to run a single thread of each script */
+  static ThreadCosts = {
+    hack: FilesData['HackWorker'].ramCost,
+    grow: FilesData['GrowWorker'].ramCost,
+    weaken: FilesData['WeakenWorker'].ramCost,
+  };
+
+  /** @description Paths to each scripts */
+  static Paths = {
+    hack: FilesData['HackWorker'].path,
+    grow: FilesData['GrowWorker'].path,
+    weaken: FilesData['WeakenWorker'].path,
+  };
 }
 
 export class BatchHelpers {
+  /** The buffer given to scripts to read the port and react */
+  static BufferTime = 10;
   /** Unreserves the ram for this batch on ramnet */
   static reserveBatch(network: RamNet, batch: gBatch | wBatch | gwBatch | hwgwBatch): void {
     for (const job of batch) {
@@ -321,28 +318,20 @@ export interface IWorker {
   /** @description The server to target */
   readonly target: string;
 
-  /** @description When this job should finish */
-  readonly endTime: number;
   /** @description How long the corresponding function will take to execute */
   readonly workTime: number;
   /** @description Number of the port for the batcher */
   readonly portNum: number;
+
+  /** @description The batches' number */
+  readonly batchNum: number;
+  /** @description The job's number in the batch */
+  readonly jobNum: number;
 }
 
-/** @description Info only needed once actually running the job */
-export interface WorkerArgs {
-  /** @description The time at which the first job of a batch should finish */
-  readonly endTime: number;
-  /** @description The server the jobs should target */
-  readonly target: string;
-  /** @description The port for the batcher */
-  readonly portNum: number;
-}
-
-type JobTypes = `hack` | `grow` | `weaken1` | `weaken2`;
-
-enum jobRamCost {
-  hack = 1.7,
-  grow = 1.75,
-  weaken = 1.75,
+export enum JobTypes {
+  hack,
+  weaken1,
+  grow,
+  weaken2,
 }

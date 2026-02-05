@@ -9,7 +9,6 @@ export class ExpandedNS {
   }
 
   /**
-   * fullScan
    * @returns An array of all servers
    */
   scanServers(): string[] {
@@ -22,6 +21,15 @@ export class ExpandedNS {
       );
     });
     return scanList;
+  }
+
+  /**
+   * @returns An array of all servers with admin access
+   */
+  scanAdminServers(): string[] {
+    return this.scanServers().filter((s) => {
+      this.ns.hasRootAccess(s);
+    });
   }
 
   fullRoot(): void {
@@ -100,9 +108,9 @@ export class ExpandedNS {
 
   /**
    * Calculates the number of threads necessary to raise money on a server to a certain amount (Lowkey ripped from the source code).
-   * @returns The number of growThreads needed to grow a server to a certain amount of money, to the next smallest integer.
+   * @returns The number of growThreads needed to grow a server to a certain amount of money, rounded up to the next smallest integer.
    * @link https://github.com/bitburner-official/bitburner-src/blob/df6c5073698e76390e2d163d91df2fde72404c66/src/Server/ServerHelpers.ts#L93
-   * @remarks Essentially does the same thing as ns.formulas.hacking.growThreads() but for a much lower ram cost.
+   * @remarks Essentially does the same thing as ns.formulas.hacking.growThreads() but much more accurately (also saves some ram).
    * @param server The name of the server
    * @param startMoney How much money the server starts with, if undefined, it assumes starting at the current money.
    * @param targetMoney How much money the server ends with, if undefined, it assumes the max money.
@@ -145,7 +153,7 @@ export class ExpandedNS {
    * @param runHome Whether to restart adaOS
    */
   clearServers(runHome = true): never {
-    this.scanServers().forEach((server) => {
+    this.scanAdminServers().forEach((server) => {
       this.ns.killall(server, runHome);
     });
 
@@ -174,6 +182,8 @@ export class ExpandedNS {
 
   /**
    * Request a port from port-controller
+   *
+   * Can result in errors, particularly if the controller is not yet running
    * @param portName If defined port-controller will remember this port so other scripts can communicate with this script
    * @returns A free and open port
    */
@@ -256,10 +266,10 @@ export class ExpandedNS {
    * Gives up a port for others to use
    * @param portName If defined, the controller will forget this portName
    */
-  retirePort(portName: string | null): void {
+  retirePort(portNum: number, portName: string | null = null): void {
     const requestArgs: PortRequest = {
       type: RequestTypes.RETIRING,
-      identifier: this.ns.pid,
+      identifier: portNum,
       portName: portName,
     };
     this.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
@@ -267,6 +277,14 @@ export class ExpandedNS {
 
   static filenameFromPath(path: string): string {
     return path.substring(path.lastIndexOf(`/`));
+  }
+
+  static decimalRound(num: number, placesAfterDecimal: number) {
+    return Math.round(num * Math.pow(10, placesAfterDecimal)) / Math.pow(10, placesAfterDecimal);
+  }
+
+  static calcGrowthFromThreads(currMoney: number, threads: number, growthMultiplier: number) {
+    return (currMoney + threads) * Math.exp(growthMultiplier * threads);
   }
 }
 
@@ -277,6 +295,7 @@ export enum PortErrors {
   DUPLICATE_NAME_ERROR = -1,
   UNDEFINED_NAME_ERROR = -2,
   MALFORMED_PORT_SEARCH_ERROR = -3,
+  UNDEFINED_PORT_NUM_ERROR = -4,
 }
 
 export enum RequestTypes {
