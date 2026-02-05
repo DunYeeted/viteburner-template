@@ -37,7 +37,7 @@ export async function main(ns: NS) {
   }
 
   const portNum = await nsx.requestPort();
-  sgBatcher.portHandle = portNum;
+  sgBatcher.port = portNum;
   const hackingLvl = ns.getHackingLevel();
 
   // ---Logging function---
@@ -96,10 +96,6 @@ class ShotgunBatcher extends Batcher {
     super(nsx, network, target, nsx.ns.getServerMaxMoney(target), undefined, nsx.ns.getHackTime(target));
 
     this.percentStolen = 0;
-  }
-
-  public set portHandle(portNum: number) {
-    this.port = portNum;
   }
 
   public createBatchesList(): hwgwBatch[] {
