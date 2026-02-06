@@ -68,6 +68,7 @@ export async function main(ns: NS) {
     for (let i = 0; i < batches.length; i++) {
       sgBatcher.runningScripts.push(...(await sgBatcher.runBatch(batches[i], i)));
     }
+    await ns.asleep(10);
     // Need to give the start signal to the queued workers
     endTime = performance.now() + sgBatcher.weakenTime + BatchHelpers.BufferTime;
     await sgBatcher.sendStartSignal(endTime);

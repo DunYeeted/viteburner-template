@@ -15,7 +15,7 @@ export async function main(ns: NS) {
     nsx.scriptError(
       `Incorrect usage! This script should not be run with args, it is usually started by another script`,
     );
-  if (nsx.checkForDuplicateScripts()) nsx.scriptError(`Error! Another version of this script is already running.`);
+  if (nsx.scriptAlreadyRunning()) nsx.scriptError(`Error! Another version of this script is already running.`);
 
   // Most scripts depend on this script. If this crashes, kill all scripts
   nsx.ns.atExit(() => {
@@ -26,6 +26,9 @@ max-ports.js`);
 
   const retiredPorts: number[] = [];
   const namedPorts = new Map<string, number>();
+
+  ns.clearPort(ReservedPorts.REQUEST_PORT);
+  ns.clearPort(ReservedPorts.FULFILLED_REQUESTS_PORT);
 
   // Print the logo
   nsx.ns.tprint(`
@@ -47,7 +50,7 @@ Weaving scripts to their destination™`);
     // If the port has something, read it immediately. If it is empty, wait until something needs our attention
     if (pcPort.empty()) await pcPort.nextWrite();
 
-    const request = nsx.readObjFromPort<PortRequest>(ReservedPorts.REQUEST_PORT);
+    const request = nsx.peekObj<PortRequest>(ReservedPorts.REQUEST_PORT);
     ns.readPort(ReservedPorts.REQUEST_PORT);
 
     switch (request.type) {
@@ -108,6 +111,6 @@ class PortNSX extends ExpandedNS {
   /** @description Sends a port to a script that requested one */
   givePort(data: FulfilledPortRequest): void {
     this.ns.print(`Giving port ${data.portNum} to script ${data.scriptID}`);
-    this.ns.writePort(FULFILLED_REQUESTS_PORT_NUMBER, JSON.stringify(data));
+    this.ns.writePort(ReservedPorts.FULFILLED_REQUESTS_PORT, JSON.stringify(data));
   }
 }
