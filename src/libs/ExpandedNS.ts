@@ -9,7 +9,9 @@ export class ExpandedNS {
   }
 
   /**
-   * @returns An array of all servers
+   * Get an array of all servers
+   *
+   * @remarks RAM Cost: 0.2 GB
    */
   scanServers(): string[] {
     const scanList: string[] = this.ns.scan();
@@ -24,14 +26,21 @@ export class ExpandedNS {
   }
 
   /**
-   * @returns An array of all servers with admin access
+   * Get a list of all servers with admin access
+   *
+   * @remarks RAM Cost: 0.25 GB
    */
   scanAdminServers(): string[] {
     return this.scanServers().filter((s) => {
-      this.ns.hasRootAccess(s);
+      return this.ns.hasRootAccess(s);
     });
   }
 
+  /**
+   * Tries to root all servers
+   *
+   * @remarks RAM Cost: 0.6 GB
+   */
   fullRoot(): void {
     for (const server of this.scanServers()) {
       switch (this.ns.getServerNumPortsRequired(server)) {
@@ -78,8 +87,8 @@ export class ExpandedNS {
   }
 
   /**
-   * emptyRam
-   * @returns The amount of unused ram on a server
+   * Get the amount of unused ram on a server
+   * @remarks RAM Cost: 0.1 GB
    */
   emptyRam(server: string): number {
     return this.ns.getServerMaxRam(server) - this.ns.getServerUsedRam(server);
@@ -87,7 +96,8 @@ export class ExpandedNS {
 
   /**
    * A function to run something with no (permanent) ram costs (RAM dodger). This is a very simple implementation so don't expect to be able to use it for everything.
-   * @remarks This function also costs 1.0 GB of ram to run itself, so anything less than that is unnecessary.
+   * @remarks RAM Cost: 1.0 GB
+   * Anything function costing less than 1.0GB is unnecessary
    * @param func Function to run
    * @param args Any arguments to pass to the function
    */
@@ -110,7 +120,7 @@ export class ExpandedNS {
    * Calculates the number of threads necessary to raise money on a server to a certain amount (Lowkey ripped from the source code).
    * @returns The number of growThreads needed to grow a server to a certain amount of money, rounded up to the next smallest integer.
    * @link https://github.com/bitburner-official/bitburner-src/blob/df6c5073698e76390e2d163d91df2fde72404c66/src/Server/ServerHelpers.ts#L93
-   * @remarks Essentially does the same thing as ns.formulas.hacking.growThreads() but much more accurately (also saves some ram).
+   * @remarks Essentially does the same thing as ns.formulas.hacking.growThreads() but before we technically have access to it (also saves some ram).
    * @param server The name of the server
    * @param startMoney How much money the server starts with, if undefined, it assumes starting at the current money.
    * @param targetMoney How much money the server ends with, if undefined, it assumes the max money.
@@ -124,7 +134,7 @@ export class ExpandedNS {
 
     // Initial guess for the number of threads since we're doing a newtonian approximation and need one
     let threads = (targetMoney - startMoney) / (1 + (targetMoney * (1 / 16) + startMoney * (15 / 16)) * serverGrowth);
-    let diff: number;
+    let diff = -1;
     do {
       // Each thread adds $1, this is how we account for that
       const startingMoney = startMoney + threads;
@@ -134,18 +144,9 @@ export class ExpandedNS {
 
       diff = newThreads - threads;
       threads = newThreads;
-    } while (Math.abs(diff) < 1);
+    } while (Math.abs(diff) > 1);
     // The actual function has some more checking for edge cases here which I might need to do if I run into the too often, but it should be fine enough
     return Math.ceil(threads);
-  }
-
-  /**
-   * Read an object from a port as a specified type
-   * @param portNum Port to read from
-   * @returns The object as the type assigned
-   */
-  readObjFromPort<t>(portNum: number): t {
-    return JSON.parse(this.ns.peek(portNum));
   }
 
   /**
@@ -162,8 +163,17 @@ export class ExpandedNS {
     this.ns.exit();
   }
 
-  checkForDuplicateScripts(): boolean {
-    return this.ns.scriptRunning(this.ns.getScriptName(), this.ns.getHostname());
+  /**
+   * Returns true if is another version of this script already running
+   *
+   * @remarks RAM Cost: 0.2GB
+   */
+  scriptAlreadyRunning(): boolean {
+    return (
+      this.ns.ps().findIndex((process) => {
+        return process.filename == this.ns.getScriptName() && process.pid != this.ns.pid;
+      }) != 1
+    );
   }
 
   scriptError(errorMessage: string): never {
@@ -171,15 +181,9 @@ export class ExpandedNS {
     this.ns.print(`Error!\n` + errorMessage);
     throw new Error(errorMessage);
   }
+}
 
-  /**
-   * Check for if a port-controller is running, since most scripts need it.
-   * @returns True if a port-controller is currently running
-   */
-  checkForPortController(): boolean {
-    return this.ns.scriptRunning(FilesData['PortController'].path, `home`);
-  }
-
+export class Ports {
   /**
    * Request a port from port-controller
    *
@@ -187,24 +191,24 @@ export class ExpandedNS {
    * @param portName If defined port-controller will remember this port so other scripts can communicate with this script
    * @returns A free and open port
    */
-  async requestPort(portName: string | null = null): Promise<number> {
+  static async requestPort(nsx: ExpandedNS, portName: string | null = null): Promise<number> {
     const requestArgs: PortRequest = {
       type: RequestTypes.REQUESTING,
-      identifier: this.ns.pid,
+      identifier: nsx.ns.pid,
       portName: portName,
     };
-    this.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
-    const fulfilledRequestPort = this.ns.getPortHandle(ReservedPorts.FULFILLED_REQUESTS_PORT);
+    nsx.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
+    const fulfilledRequestPort = nsx.ns.getPortHandle(ReservedPorts.FULFILLED_REQUESTS_PORT);
 
     do {
       // If there is something already, we want to read it immediately
       // If a lot of scripts keep trying to read from this port, that could cause some issues
       // By waiting for this, it should slow them down enough to not worry about it
-      await this.ns.sleep(0);
-      if (fulfilledRequestPort.empty()) await this.ns.nextPortWrite(ReservedPorts.FULFILLED_REQUESTS_PORT);
+      await nsx.ns.asleep(0);
+      if (fulfilledRequestPort.empty()) await fulfilledRequestPort.nextWrite();
 
-      const possibleFulfilledRequest: FulfilledPortRequest = this.readObjFromPort<FulfilledPortRequest>(
-        ReservedPorts.FULFILLED_REQUESTS_PORT,
+      const possibleFulfilledRequest: FulfilledPortRequest = JSON.parse(
+        nsx.ns.peek(ReservedPorts.FULFILLED_REQUESTS_PORT),
       );
 
       // This is this script's fulfilled port request
@@ -212,14 +216,14 @@ export class ExpandedNS {
         // Remove from the queue so other scripts don't try to read this
         fulfilledRequestPort.read();
         // Clear the port before using
-        this.ns.clearPort(possibleFulfilledRequest.portNum);
+        nsx.ns.clearPort(possibleFulfilledRequest.portNum);
         // Throw an error if someone else already had this portName
         if (possibleFulfilledRequest.portNum == PortErrors.DUPLICATE_NAME_ERROR)
-          this.scriptError(
+          nsx.scriptError(
             `Port name is duplicated, usually happens when running a script twice when only supposed to be run once`,
           );
         if (possibleFulfilledRequest.portNum == PortErrors.MALFORMED_PORT_SEARCH_ERROR)
-          this.scriptError(`Port name was undefined`);
+          nsx.scriptError(`Port name was undefined`);
         return possibleFulfilledRequest.portNum;
       }
     } while (true);
@@ -230,24 +234,24 @@ export class ExpandedNS {
    * @param portName The port to search for
    * @returns The portNum that portName is assigned to
    */
-  async searchForPort(portName: string): Promise<number> {
+  static async searchForPort(nsx: ExpandedNS, portName: string): Promise<number> {
     const requestArgs: PortRequest = {
-      identifier: this.ns.pid,
+      identifier: nsx.ns.pid,
       type: RequestTypes.SEARCHING,
       portName: portName,
     };
-    this.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
-    const fulfilledRequestPort = this.ns.getPortHandle(ReservedPorts.FULFILLED_REQUESTS_PORT);
+    nsx.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
+    const fulfilledRequestPort = nsx.ns.getPortHandle(ReservedPorts.FULFILLED_REQUESTS_PORT);
 
     do {
       // If there is something already, we want to read it immediately
       // If a lot of scripts keep trying to read from this port, that could cause some issues
       // By waiting for this, it should slow them down enough to not worry about it
-      await this.ns.sleep(0);
+      await nsx.ns.sleep(0);
       if (fulfilledRequestPort.empty()) await fulfilledRequestPort.nextWrite();
 
-      const possibleFulfilledRequest: FulfilledPortRequest = this.readObjFromPort<FulfilledPortRequest>(
-        ReservedPorts.FULFILLED_REQUESTS_PORT,
+      const possibleFulfilledRequest: FulfilledPortRequest = JSON.parse(
+        nsx.ns.peek(ReservedPorts.FULFILLED_REQUESTS_PORT),
       );
 
       if (possibleFulfilledRequest.scriptID == requestArgs.identifier) {
@@ -266,26 +270,27 @@ export class ExpandedNS {
    * Gives up a port for others to use
    * @param portName If defined, the controller will forget this portName
    */
-  retirePort(portNum: number, portName: string | null = null): void {
+  retirePort(nsx: ExpandedNS, portNum: number, portName: string | null = null): void {
     const requestArgs: PortRequest = {
       type: RequestTypes.RETIRING,
       identifier: portNum,
       portName: portName,
     };
-    this.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
+    nsx.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
+    nsx.ns.clearPort(portNum);
   }
+}
 
-  static filenameFromPath(path: string): string {
-    return path.substring(path.lastIndexOf(`/`));
-  }
+export function filenameFromPath(path: string): string {
+  return path.substring(path.lastIndexOf(`/`));
+}
 
-  static decimalRound(num: number, placesAfterDecimal: number) {
-    return Math.round(num * Math.pow(10, placesAfterDecimal)) / Math.pow(10, placesAfterDecimal);
-  }
+export function decimalRound(num: number, placesAfterDecimal: number) {
+  return Math.round(num * Math.pow(10, placesAfterDecimal)) / Math.pow(10, placesAfterDecimal);
+}
 
-  static calcGrowthFromThreads(currMoney: number, threads: number, growthMultiplier: number) {
-    return (currMoney + threads) * Math.exp(growthMultiplier * threads);
-  }
+export function calcGrowthFromThreads(currMoney: number, threads: number, growthMultiplier: number) {
+  return (currMoney + threads) * Math.exp(growthMultiplier * threads);
 }
 
 // ---PORT-CONTROLLER---
