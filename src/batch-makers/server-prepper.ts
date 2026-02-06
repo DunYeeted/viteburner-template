@@ -1,7 +1,7 @@
+import { AutocompleteData, NS, ScriptArg } from '@ns';
 import { Batcher, BatchHelpers, gwBatch, JobHelpers, JobTypes, RamNet, wBatch } from '@/libs/controller-functions';
 import { ExpandedNS } from '@/libs/ExpandedNS';
 import { FilesData } from '@/libs/FilesData';
-import { NS } from '@ns';
 
 export async function main(ns: NS) {
   const nsx = new ExpandedNS(ns);
@@ -11,8 +11,16 @@ export async function main(ns: NS) {
       ./batch-makers/server-prepper.js foodnstuff`);
     return;
   }
+  // ns.disableLog(`ALL`);
+  // ns.enableLog(`print`);
 
   const targetName = ns.args[0];
+
+  // Send HGW scripts to the servers
+  nsx.scanAdminServers().forEach((server) => {
+    ns.scp([JobHelpers.Paths.grow, JobHelpers.Paths.weaken, JobHelpers.Paths.hack], server, `home`);
+  });
+
   const pBatcher = new PreparerBatcher(nsx, new RamNet(nsx), targetName);
 
   const portNum = await nsx.requestPort();
@@ -23,24 +31,24 @@ export async function main(ns: NS) {
   let endTime = 0;
   let prospectedMoney = 0;
   let batches: (gwBatch | wBatch)[] = [];
-  const logger = setInterval(() => {
-    prospectedMoney = pBatcher.batchGrowth(batches);
-    const currentMoney = ns.getServerMoneyAvailable(targetName);
-    ns.clearLog();
-    ns.print(`Hacking: ${ns.args[0]}`);
-    ns.print(`Empty ram: ${pBatcher.totalRam}`);
-    ns.print(
-      `Growing: $${prospectedMoney}
-      )} (${ExpandedNS.decimalRound(prospectedMoney / currentMoney, 2)}%)`,
-    );
-    ns.print(`Active workers: ${pBatcher.runningScripts.length}`);
-    ns.print(`ETA: ${ns.tFormat(endTime)}`);
-  }, 1000);
+  // const logger = setInterval(() => {
+  //   prospectedMoney = pBatcher.batchGrowth(batches);
+  //   const currentMoney = ns.getServerMoneyAvailable(targetName);
+  //   ns.clearLog();
+  //   ns.print(`Hacking: ${ns.args[0]}`);
+  //   ns.print(`Empty ram: ${pBatcher.totalRam}`);
+  //   ns.print(
+  //     `Growing: $${prospectedMoney}
+  //     )} (${ExpandedNS.decimalRound((prospectedMoney / currentMoney) * 100, 2)}%)`,
+  //   );
+  //   ns.print(`Active workers: ${pBatcher.runningScripts.length}`);
+  //   ns.print(`ETA: ${ns.tFormat(endTime)}`);
+  // }, 1000);
 
   // Remember to clear the timer and retire the port eventually
   ns.atExit(() => {
     nsx.retirePort(portNum);
-    clearInterval(logger);
+    // clearInterval(logger);
   });
   const port = ns.getPortHandle(portNum);
 
@@ -50,15 +58,17 @@ export async function main(ns: NS) {
     for (let i = 0; i < batches.length; i++) {
       pBatcher.runningScripts.push(...(await pBatcher.runBatch(batches[i], i)));
     }
+    await ns.asleep(50);
     // Need to give the start signal to the queued workers
     endTime = performance.now() + pBatcher.weakenTime + BatchHelpers.BufferTime;
     await pBatcher.sendStartSignal(endTime);
 
     // Wait for the scripts to finish
-    while (pBatcher.runningScripts.length > 0) {
-      await ns.nextPortWrite(portNum);
+    do {
+      // ns.tprint(`Waiting...`);
+      await port.nextWrite();
       if (!port.empty()) pBatcher.runningScripts.splice(pBatcher.runningScripts.indexOf(port.read()), 1);
-    }
+    } while (pBatcher.runningScripts.length > 0);
 
     // Finished this run through
     // Check if we levelled up
@@ -68,6 +78,8 @@ export async function main(ns: NS) {
     }
     // Otherwise, loop around again
   }
+
+  ns.toast(`${targetName} is now prepped!`, `success`);
 }
 
 class PreparerBatcher extends Batcher {
@@ -108,30 +120,30 @@ class PreparerBatcher extends Batcher {
     const idealCost = idealThreads * JobHelpers.ThreadCosts.weaken;
     // If we could, then create the job and return
     if (idealCost <= largestServer.ram) {
-      const server = this.network.findSuitableServer(idealCost) ?? ``;
+      const server = this.network.findSuitableServer(idealCost);
       this.network.reserveRam(server, idealCost);
       batches.push([{ type: JobTypes.weaken1, hostServer: server, threads: idealThreads }]);
       return batches;
     }
 
     // Finally, if the job was too large, we'll do the largest one we can right now and have to do more later
-    const largestPossibleThreads = Math.floor(largestServer.ram / JobHelpers.ThreadCosts.weaken);
-    const possibleCost = largestPossibleThreads * JobHelpers.ThreadCosts.weaken;
-    const server = this.network.findSuitableServer(possibleCost) ?? ``;
-    this.network.reserveRam(server, possibleCost);
+    const greatestPossibleThreads = Math.floor(largestServer.ram / JobHelpers.ThreadCosts.weaken);
+    const possibleCost = greatestPossibleThreads * JobHelpers.ThreadCosts.weaken;
+    this.network.reserveRam(largestServer.name, possibleCost);
 
-    batches.push([{ type: JobTypes.weaken1, hostServer: server, threads: largestPossibleThreads }]);
-    return this.weakenServerBatches(currSec - largestPossibleThreads * 0.05, batches);
+    batches.push([{ type: JobTypes.weaken1, hostServer: largestServer.name, threads: greatestPossibleThreads }]);
+    return this.weakenServerBatches(currSec - greatestPossibleThreads * 0.05, batches);
   }
 
   growServerBatches(currMoney: number, batches: gwBatch[] = []): gwBatch[] {
     // First check if the network has enough ram to run both a grow and weaken thread at least.
-    if (this.network.findSuitableServer(JobHelpers.ThreadCosts.grow + JobHelpers.ThreadCosts.weaken)) return batches;
+    if (this.network.largestServer.ram < JobHelpers.ThreadCosts.grow + JobHelpers.ThreadCosts.weaken) return batches;
 
     // Otherwise, check if we can get to the max in a single batch
-    const idealGrowThreads = this.nsx.calcGrowThreads(this.targetName, currMoney);
+    const idealGrowThreads = this.nsx.calcGrowThreads(this.targetName, currMoney, this.maxMoney);
     const idealGrowCost = idealGrowThreads * JobHelpers.ThreadCosts.grow;
     const idealGrowServer = this.network.findSuitableServer(idealGrowCost);
+    // FYI, this does not need to be undone, since if it is undefined, the later 'if' will fail
     this.network.reserveRam(idealGrowServer, idealGrowCost);
 
     const idealWeakenThreads = JobHelpers.calcWeaken2Threads(idealGrowThreads);
@@ -154,6 +166,9 @@ class PreparerBatcher extends Batcher {
       ]);
       return batches;
     }
+    if (idealWeakenServer === undefined) {
+      this.network.unreserveRam(idealGrowServer, idealGrowCost);
+    }
 
     // Finally, we need to create the largest batch we can
     // The ideal situation is to find the largest batch for both weakens and grows
@@ -171,7 +186,7 @@ class PreparerBatcher extends Batcher {
     const weakenThreads = Math.ceil(availableThreads / 13.5);
     // This now represents the grow threads available on the server
     availableThreads -= weakenThreads;
-    const growThreads = availableThreads
+    const growThreads = availableThreads;
 
     batches.push([
       {
@@ -186,11 +201,16 @@ class PreparerBatcher extends Batcher {
       },
     ]);
 
+    // Remember to reserve ram
+    this.network.reserveRam(realServer.name, JobHelpers.ThreadCosts.grow * growThreads);
+    this.network.reserveRam(realServer.name, JobHelpers.ThreadCosts.weaken * weakenThreads);
+
+    // Keep trying until we run out of ram or until we finish the server
     const newMoney = ExpandedNS.calcGrowthFromThreads(currMoney, growThreads, this.serverGrowth);
     return this.growServerBatches(newMoney, batches);
   }
 
-  batchGrowth(batches: (gwBatch | wBatch)[], batchNum: number = 0, money: number = this.serverMoney): number {
+  batchGrowth(batches: (gwBatch | wBatch)[], batchNum = 0, money: number = this.serverMoney): number {
     if (batchNum == batches.length) return money;
     // Check if this is a grow batch
     if (batches[batchNum][0].type != JobTypes.grow) this.batchGrowth(batches, batchNum + 1, money);
@@ -198,4 +218,8 @@ class PreparerBatcher extends Batcher {
     money = ExpandedNS.calcGrowthFromThreads(money, threads, this.serverGrowth);
     return this.batchGrowth(batches, batchNum + 1, money);
   }
+}
+
+export function autocomplete(data: AutocompleteData, _args: ScriptArg) {
+  return [...data.servers];
 }
