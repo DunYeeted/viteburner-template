@@ -15,12 +15,12 @@ export class RamNet {
 
   constructor(nsx: ExpandedNS) {
     const servers = nsx.scanAdminServers();
-    this.network = [];
+    // Create the network from the servers we scanned
+    this.network = servers.map((name) => {
+      return { name: name, ram: nsx.emptyRam(name) };
+    });
 
-    // Create an array from the servers we scanned
-    for (let i = 0; i < servers.length; i++) {
-      this.network[i] = { name: servers[i], ram: nsx.emptyRam(servers[i]) };
-    }
+    // nsx.ns.tprint(servers.toString());
     this.sortNetwork();
   }
 
@@ -56,13 +56,14 @@ export class RamNet {
   public reserveRam(server: string | undefined, ram: number): void {
     if (server == undefined) return;
 
-    const s = this.network.find((s) => {
-      return s.name === server;
+    const s = this.network.find((serv) => {
+      return serv.name === server;
     });
 
     if (s == undefined) throw new Error(`${server} not defined on network!`);
 
     s.ram -= ram;
+    console.log(s);
 
     this.sortNetwork();
     return;
@@ -74,8 +75,8 @@ export class RamNet {
   public unreserveRam(server: string | undefined, ram: number): void {
     if (server == undefined) return;
 
-    const s = this.network.find((s) => {
-      return s.name === server;
+    const s = this.network.find((serv) => {
+      return serv.name === server;
     });
 
     if (s == undefined) throw new Error(`${server} not defined on network!`);
@@ -100,10 +101,9 @@ export abstract class Batcher {
     protected readonly network: RamNet,
     readonly targetName: string,
     protected readonly maxMoney: number,
-    protected port: number | undefined,
+    public port: number | undefined,
     /** @description How long each weaken will take on a server, other timings can be determined from this */
     readonly hackTime: number,
-    public readonly timeBetweenWorkers = 5,
   ) {}
 
   abstract createBatchesList(): hwgwBatch[] | (gwBatch | wBatch)[] | gBatch[];
@@ -130,23 +130,26 @@ export abstract class Batcher {
    * */
   public async runBatch(batch: gBatch | wBatch | gwBatch | hwgwBatch, batchNum: number): Promise<number[]> {
     return batch.map((job, jobNum) => {
-      return this.runJob({
-        hostServer: job.hostServer,
-        type: job.type,
+      return this.runJob(
+        {
+          hostServer: job.hostServer,
+          type: job.type,
 
-        target: this.targetName,
+          target: this.targetName,
 
-        workTime:
-          job.type == JobTypes.hack
-            ? this.hackTime
-            : job.type == JobTypes.grow
-            ? this.hackTime * 3.2
-            : this.hackTime * 4,
+          workTime:
+            job.type == JobTypes.hack
+              ? this.hackTime
+              : job.type == JobTypes.grow
+              ? this.hackTime * 3.2
+              : this.hackTime * 4,
 
-        portNum: this.port ?? PortErrors.UNDEFINED_PORT_NUM_ERROR,
-        batchNum: batchNum,
-        jobNum: jobNum,
-      });
+          portNum: this.port ?? PortErrors.UNDEFINED_PORT_NUM_ERROR,
+          batchNum: batchNum,
+          jobNum: jobNum,
+        },
+        job.threads,
+      );
     });
   }
 
@@ -155,25 +158,26 @@ export abstract class Batcher {
    * @param job Job to run
    * @returns pid of the script
    */
-  protected runJob(job: IWorker): number {
+  protected runJob(job: IWorker, threadCount: number): number {
     const script =
       job.type == JobTypes.hack
         ? JobHelpers.Paths.hack
         : job.type == JobTypes.grow
         ? JobHelpers.Paths.grow
         : JobHelpers.Paths.weaken;
+    const ramCost =
+      threadCount * job.type == JobTypes.hack
+        ? JobHelpers.ThreadCosts.hack
+        : job.type == JobTypes.grow
+        ? JobHelpers.ThreadCosts.grow
+        : JobHelpers.ThreadCosts.weaken;
 
-    return this.nsx.ns.exec(script, job.hostServer, { temporary: true }, JSON.stringify(job));
-  }
-
-  /**
-   * Terminates a certain number of the most recent workers to run
-   * @param workersToTerminate How many of the last workers to terminate
-   */
-  public terminateWorkers(pidsToTerminate: number[]): void {
-    pidsToTerminate.forEach((pid) => {
-      this.nsx.ns.kill(pid);
-    });
+    return this.nsx.ns.exec(
+      script,
+      job.hostServer,
+      { threads: threadCount, temporary: true, ramOverride: ramCost },
+      JSON.stringify(job),
+    );
   }
 
   /**
@@ -184,9 +188,17 @@ export abstract class Batcher {
    * @example Batcher.startSignal(performance.now() + Batcher.weakenTime());
    */
   public async sendStartSignal(endTime: number) {
-    this.nsx.ns.writePort(this.port ?? PortErrors.UNDEFINED_PORT_NUM_ERROR, JSON.stringify(endTime));
-    await this.nsx.ns.asleep(1000);
-    this.nsx.ns.clearPort(this.port ?? PortErrors.UNDEFINED_PORT_NUM_ERROR);
+    if (this.port === undefined) this.nsx.scriptError(`You had an undefined portNum`);
+    this.nsx.ns.writePort(this.port, endTime);
+    // For whatever reason, the port gets cleared right here
+    // Not affected by the clearPort after this in server-prepper
+    // or the peeks in HGW scripts
+    this.nsx.ns.print(this.nsx.ns.peek(this.port));
+
+    await this.nsx.ns.asleep(50);
+    this.nsx.ns.print(this.nsx.ns.peek(this.port) + `, clearing port...`);
+    this.nsx.ns.clearPort(this.port);
+    this.nsx.ns.print(this.nsx.ns.peek(this.port));
   }
 
   get weakenTime(): number {
