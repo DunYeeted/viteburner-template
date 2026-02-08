@@ -27,12 +27,13 @@ export class RamNet {
 
   get largestServer(): { name: string; ram: number } {
     this.sortNetwork();
-    return this.network[0];
+    return this.network[this.network.length - 1];
   }
 
+  /** Sorts the network from smallest to largest */
   private sortNetwork(): void {
     this.network.sort((a, b) => {
-      return a.ram - b.ram;
+      return b.ram - a.ram;
     });
   }
 
@@ -103,9 +104,11 @@ export abstract class Batcher {
     readonly targetName: string,
     protected readonly maxMoney: number,
     /** @description How long each weaken will take on a server, other timings can be determined from this */
-    readonly hackTime: number = this.nsx.ns.getHackTime(this.targetName),
+    readonly hackTime: number,
     public port: number = PortErrors.UNDEFINED_PORT_NUM_ERROR,
-  ) {}
+  ) {
+    this.hackTime = this.nsx.ns.getHackTime(this.targetName);
+  }
 
   abstract createBatchesList(): hwgwBatch[] | (gwBatch | wBatch)[] | gBatch[];
 
