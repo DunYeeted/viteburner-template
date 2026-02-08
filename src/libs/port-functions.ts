@@ -53,8 +53,8 @@ export class PortHelpers {
    */
   static async searchForPort(nsx: ExpandedNS, portName: string): Promise<number> {
     const requestArgs: PortRequest = {
-      identifier: nsx.ns.pid,
       type: RequestTypes.searching,
+      identifier: nsx.ns.pid,
       portName: portName,
     };
     nsx.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
