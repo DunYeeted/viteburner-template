@@ -102,9 +102,9 @@ export abstract class Batcher {
     protected readonly network: RamNet,
     readonly targetName: string,
     protected readonly maxMoney: number,
-    public port: number = PortErrors.UNDEFINED_PORT_NUM_ERROR,
     /** @description How long each weaken will take on a server, other timings can be determined from this */
     readonly hackTime: number = this.nsx.ns.getHackTime(this.targetName),
+    public port: number = PortErrors.UNDEFINED_PORT_NUM_ERROR,
   ) {}
 
   abstract createBatchesList(): hwgwBatch[] | (gwBatch | wBatch)[] | gBatch[];
