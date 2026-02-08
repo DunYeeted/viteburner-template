@@ -1,6 +1,6 @@
 import { ExpandedNS } from './ExpandedNS';
 
-export class Ports {
+export class PortHelpers {
   /**
    * Request a port from port-controller
    *
@@ -10,7 +10,7 @@ export class Ports {
    */
   static async requestPort(nsx: ExpandedNS, portName: string | null = null): Promise<number> {
     const requestArgs: PortRequest = {
-      type: RequestTypes.REQUESTING,
+      type: RequestTypes.requesting,
       identifier: nsx.ns.pid,
       portName: portName,
     };
@@ -54,7 +54,7 @@ export class Ports {
   static async searchForPort(nsx: ExpandedNS, portName: string): Promise<number> {
     const requestArgs: PortRequest = {
       identifier: nsx.ns.pid,
-      type: RequestTypes.SEARCHING,
+      type: RequestTypes.searching,
       portName: portName,
     };
     nsx.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
@@ -87,9 +87,9 @@ export class Ports {
    * Gives up a port for others to use
    * @param portName If defined, the controller will forget this portName
    */
-  retirePort(nsx: ExpandedNS, portNum: number, portName: string | null = null): void {
+  static retirePort(nsx: ExpandedNS, portNum: number, portName: string | null = null): void {
     const requestArgs: PortRequest = {
-      type: RequestTypes.RETIRING,
+      type: RequestTypes.retiring,
       identifier: portNum,
       portName: portName,
     };
@@ -110,11 +110,11 @@ export enum PortErrors {
 
 export enum RequestTypes {
   /** @description Asking for a free port */
-  REQUESTING,
+  requesting,
   /** @description Looking for a port to another script */
-  SEARCHING,
+  searching,
   /** @description Port is no longer being used */
-  RETIRING,
+  retiring,
 }
 
 export enum ReservedPorts {
