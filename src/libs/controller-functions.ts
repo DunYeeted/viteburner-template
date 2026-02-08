@@ -21,7 +21,6 @@ export class RamNet {
       return { name: name, ram: nsx.emptyRam(name) };
     });
 
-    // nsx.ns.tprint(servers.toString());
     this.sortNetwork();
   }
 
