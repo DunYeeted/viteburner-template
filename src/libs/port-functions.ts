@@ -64,7 +64,7 @@ export class PortHelpers {
       // If there is something already, we want to read it immediately
       // If a lot of scripts keep trying to read from this port, that could cause some issues
       // By waiting for this, it should slow them down enough to not worry about it
-      await nsx.ns.sleep(0);
+      await nsx.ns.asleep(0);
       if (fulfilledRequestPort.empty()) await fulfilledRequestPort.nextWrite();
 
       const possibleFulfilledRequest: FulfilledPortRequest = JSON.parse(
@@ -94,7 +94,6 @@ export class PortHelpers {
       portName: portName,
     };
     nsx.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
-    nsx.ns.clearPort(portNum);
   }
 }
 
