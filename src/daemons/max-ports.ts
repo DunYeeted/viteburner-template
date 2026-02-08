@@ -44,22 +44,22 @@ Weaving scripts to their destination™`);
     // If the port has something, read it immediately. If it is empty, wait until something needs our attention
     if (pcPort.empty()) await pcPort.nextWrite();
 
-    const request = nsx.peekObj<PortRequest>(ReservedPorts.REQUEST_PORT);
+    const request: PortRequest = JSON.parse(ns.peek(ReservedPorts.REQUEST_PORT));
     ns.readPort(ReservedPorts.REQUEST_PORT);
+
+    let port: number;
 
     switch (request.type) {
       // --- REQUESTING ---
-      case RequestTypes.REQUESTING:
+      case RequestTypes.requesting:
         // Somebody already has this portname
         if (request.portName !== null && namedPorts.has(request.portName)) {
           nsx.givePort({ scriptID: request.identifier, portNum: PortErrors.DUPLICATE_NAME_ERROR });
           break;
         }
 
-        // eslint-disable-next-line no-case-declarations
-        let port = 0;
         if (retiredPorts.length > 0) {
-          port = retiredPorts.shift();
+          port = retiredPorts.shift() as number;
         } else {
           port = nextFreePort;
           nextFreePort++;
@@ -69,7 +69,7 @@ Weaving scripts to their destination™`);
         break;
 
       // --- SEARCHING ---
-      case RequestTypes.SEARCHING:
+      case RequestTypes.searching:
         // Did not specify a name despite asking for one
         if (request.portName === null) {
           nsx.givePort({ scriptID: request.identifier, portNum: PortErrors.MALFORMED_PORT_SEARCH_ERROR });
@@ -87,12 +87,11 @@ Weaving scripts to their destination™`);
         break;
 
       // --- RETIRING ---
-      case RequestTypes.RETIRING:
-        if (request.portName !== null) {
-          // Delete the namedPort if necessary
-          const deletedNamedPort = namedPorts.delete(request.portName);
-          // If this namedPort never existed, it's concerning but given it is about to be retired there's no need to throw an error
-          if (!deletedNamedPort) ns.print(`Tried to delete ${request.portName}, but it does not exist!`);
+      case RequestTypes.retiring:
+        // Delete the namedPort if necessary
+        if (request.portName !== null && !namedPorts.delete(request.portName)) {
+          // If this namedPort never existed, it's concerning but since it is about to be retired there's no need to throw an error
+          ns.toast(`Tried to delete ${request.portName}, but it does not exist!`, `warning`);
         }
         retiredPorts.push(request.identifier);
         ns.clearPort(request.identifier);
