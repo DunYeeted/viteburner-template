@@ -74,6 +74,7 @@ export class PortHelpers {
       if (possibleFulfilledRequest.scriptID == requestArgs.identifier) {
         // Discard this so no other script tries to read it.
         fulfilledRequestPort.read();
+        // Do not need to look for malformed request, since this function would have caught it before sending it
         if (possibleFulfilledRequest.portNum == PortErrors.UNDEFINED_NAME_ERROR)
           throw new Error(
             `Port name is undefined, usually happens when asking for a script's port before the script exists`,
