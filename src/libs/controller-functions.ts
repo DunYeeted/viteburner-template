@@ -1,6 +1,7 @@
 import { NS } from '@ns';
-import { ExpandedNS, PortErrors } from './ExpandedNS';
+import { ExpandedNS } from './ExpandedNS';
 import { FilesData } from './FilesData';
+import { PortErrors } from './port-functions';
 
 // Weaken is responsible for the desyncs upon leveling up
 // If weakentime decreases, that results in a 4x decrease time in hack and 3.2x time in hacks
@@ -101,9 +102,9 @@ export abstract class Batcher {
     protected readonly network: RamNet,
     readonly targetName: string,
     protected readonly maxMoney: number,
-    public port: number | undefined,
+    public port: number = PortErrors.UNDEFINED_PORT_NUM_ERROR,
     /** @description How long each weaken will take on a server, other timings can be determined from this */
-    readonly hackTime: number,
+    readonly hackTime: number = this.nsx.ns.getHackTime(this.targetName),
   ) {}
 
   abstract createBatchesList(): hwgwBatch[] | (gwBatch | wBatch)[] | gBatch[];
@@ -114,21 +115,20 @@ export abstract class Batcher {
    * @param server
    * @returns True if the server has its maximum money and minimum security level
    */
-  public static isPrepped(ns: NS, server: string) {
+  public isPrepped() {
     return (
-      ns.getServerMaxMoney(server) == ns.getServerMoneyAvailable(server) &&
-      ns.getServerMinSecurityLevel(server) == ns.getServerSecurityLevel(server)
+      this.nsx.ns.getServerMaxMoney(this.targetName) == this.nsx.ns.getServerMoneyAvailable(this.targetName) &&
+      this.nsx.ns.getServerMinSecurityLevel(this.targetName) == this.nsx.ns.getServerSecurityLevel(this.targetName)
     );
   }
 
   /**
-   * @description Executes jobs in a batch on servers
+   * @description Deploys jobs in a batch on servers, to be started later
    * @returns An array of pids for the started scripts
-   *
-   * Pauses after each one to redetermine time offsets, which could lower efficiency (especially in smaller batches).
-   * The pause also prevents the port from filling up.
+   * @remarks The exec'd scripts still need to be sent a start signal
    * */
-  public async runBatch(batch: gBatch | wBatch | gwBatch | hwgwBatch, batchNum: number): Promise<number[]> {
+  public async deployBatch(batch: gBatch | wBatch | gwBatch | hwgwBatch, batchNum: number): Promise<number[]> {
+    this.checkPortNum();
     return batch.map((job, jobNum) => {
       return this.runJob(
         {
@@ -144,7 +144,7 @@ export abstract class Batcher {
               ? this.hackTime * 3.2
               : this.hackTime * 4,
 
-          portNum: this.port ?? PortErrors.UNDEFINED_PORT_NUM_ERROR,
+          portNum: this.port,
           batchNum: batchNum,
           jobNum: jobNum,
         },
@@ -188,17 +188,23 @@ export abstract class Batcher {
    * @example Batcher.startSignal(performance.now() + Batcher.weakenTime());
    */
   public async sendStartSignal(endTime: number) {
-    if (this.port === undefined) this.nsx.scriptError(`You had an undefined portNum`);
+    this.checkPortNum();
     this.nsx.ns.writePort(this.port, endTime);
     // For whatever reason, the port gets cleared right here
     // Not affected by the clearPort after this in server-prepper
     // or the peeks in HGW scripts
+    await this.nsx.ns.asleep(1);
     this.nsx.ns.print(this.nsx.ns.peek(this.port));
 
     await this.nsx.ns.asleep(50);
     this.nsx.ns.print(this.nsx.ns.peek(this.port) + `, clearing port...`);
     this.nsx.ns.clearPort(this.port);
     this.nsx.ns.print(this.nsx.ns.peek(this.port));
+  }
+
+  private checkPortNum() {
+    if (this.port == PortErrors.UNDEFINED_PORT_NUM_ERROR)
+      this.nsx.scriptError(`Tried to call a deployment function before assigning this script's port`);
   }
 
   get weakenTime(): number {
