@@ -25,9 +25,7 @@ export async function main(ns: NS) {
 
   const pBatcher = new PreparerBatcher(nsx, new RamNet(nsx), targetName);
 
-  // Until await ns.nextPortWrite does not clear all ports, hardcoding the portnum will have to do
-  const portNum = 4;
-  ns.clearPort(portNum);
+  const portNum = await PortHelpers.requestPort(nsx);
   pBatcher.port = portNum;
   const hackLvl = ns.getHackingLevel();
 
@@ -147,7 +145,6 @@ class PreparerBatcher extends Batcher {
     const idealGrowThreads = this.nsx.calcGrowThreads(this.targetName, currMoney, this.maxMoney);
     const idealGrowCost = idealGrowThreads * JobHelpers.ThreadCosts.grow;
     const idealGrowServer = this.network.findSuitableServer(idealGrowCost);
-    // FYI, this does not need to be undone, since if it is undefined, the later 'if' will fail
     this.network.reserveRam(idealGrowServer, idealGrowCost);
 
     const idealWeakenThreads = JobHelpers.calcWeaken2Threads(idealGrowThreads);
@@ -174,10 +171,10 @@ class PreparerBatcher extends Batcher {
       this.network.unreserveRam(idealGrowServer, idealGrowCost);
     }
 
-    // Finally, we need to create the largest batch we can
+    // For the final case, we need to create the largest batch we can
     // The ideal situation is to find the largest batch for both weakens and grows
     // This would require a lot of math and repetition for something that would probably not make that large of a difference
-    // So, we take a heuristic
+    // So, we instead use a heuristic:
     // We simply take the largest server and fit as many weaken and grow threads onto that server
     // This allows us to get relatively close in much less work
 
