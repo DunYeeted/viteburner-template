@@ -2,6 +2,8 @@ import { AutocompleteData, NS, ScriptArg } from '@ns';
 import { Batcher, BatchHelpers, gwBatch, JobHelpers, JobTypes, RamNet, wBatch } from '@/libs/controller-functions';
 import { ExpandedNS } from '@/libs/ExpandedNS';
 import { FilesData } from '@/libs/FilesData';
+import { PortHelpers } from '@/libs/port-functions';
+import { calcGrowthFromThreads, decimalRound } from '@/libs/utils';
 
 export async function main(ns: NS) {
   const nsx = new ExpandedNS(ns);
@@ -11,10 +13,10 @@ export async function main(ns: NS) {
       ./batch-makers/server-prepper.js foodnstuff`);
     return;
   }
-  // ns.disableLog(`ALL`);
-  // ns.enableLog(`print`);
+  ns.disableLog(`ALL`);
+  ns.enableLog(`print`);
 
-  const targetName = ns.args[0];
+  const targetName: string = ns.args[0];
 
   // Send HGW scripts to the servers
   nsx.scanAdminServers().forEach((server) => {
@@ -23,7 +25,9 @@ export async function main(ns: NS) {
 
   const pBatcher = new PreparerBatcher(nsx, new RamNet(nsx), targetName);
 
-  const portNum = await nsx.requestPort();
+  // Until await ns.nextPortWrite does not clear all ports, hardcoding the portnum will have to do
+  const portNum = 4;
+  ns.clearPort(portNum);
   pBatcher.port = portNum;
   const hackLvl = ns.getHackingLevel();
 
@@ -31,32 +35,32 @@ export async function main(ns: NS) {
   let endTime = 0;
   let prospectedMoney = 0;
   let batches: (gwBatch | wBatch)[] = [];
-  // const logger = setInterval(() => {
-  //   prospectedMoney = pBatcher.batchGrowth(batches);
-  //   const currentMoney = ns.getServerMoneyAvailable(targetName);
-  //   ns.clearLog();
-  //   ns.print(`Hacking: ${ns.args[0]}`);
-  //   ns.print(`Empty ram: ${pBatcher.totalRam}`);
-  //   ns.print(
-  //     `Growing: $${prospectedMoney}
-  //     )} (${ExpandedNS.decimalRound((prospectedMoney / currentMoney) * 100, 2)}%)`,
-  //   );
-  //   ns.print(`Active workers: ${pBatcher.runningScripts.length}`);
-  //   ns.print(`ETA: ${ns.tFormat(endTime)}`);
-  // }, 1000);
+  const logger = setInterval(() => {
+    prospectedMoney = pBatcher.batchGrowth(batches);
+    const currentMoney = ns.getServerMoneyAvailable(targetName);
+    ns.clearLog();
+    ns.print(`Hacking: ${targetName}`);
+    ns.print(`Empty ram: ${pBatcher.totalRam}`);
+    ns.print(
+      `Growing: $${prospectedMoney}
+      )} (${decimalRound((prospectedMoney / currentMoney) * 100, 2)}%)`,
+    );
+    ns.print(`Active workers: ${pBatcher.runningScripts.length}`);
+    ns.print(`ETA: ${ns.tFormat(endTime - performance.now())}`);
+  }, 1000);
 
   // Remember to clear the timer and retire the port eventually
   ns.atExit(() => {
-    nsx.retirePort(portNum);
-    // clearInterval(logger);
+    PortHelpers.retirePort(nsx, portNum);
+    clearInterval(logger);
   });
   const port = ns.getPortHandle(portNum);
 
-  while (!Batcher.isPrepped(ns, targetName)) {
+  while (!pBatcher.isPrepped()) {
     batches = pBatcher.createBatchesList();
     // Run each batch
     for (let i = 0; i < batches.length; i++) {
-      pBatcher.runningScripts.push(...(await pBatcher.runBatch(batches[i], i)));
+      pBatcher.runningScripts.push(...(await pBatcher.deployBatch(batches[i], i)));
     }
     await ns.asleep(50);
     // Need to give the start signal to the queued workers
@@ -91,7 +95,7 @@ class PreparerBatcher extends Batcher {
   readonly serverGrowth: number;
 
   constructor(nsx: ExpandedNS, network: RamNet, targetName: string) {
-    super(nsx, network, targetName, nsx.ns.getServerMaxMoney(targetName), undefined, nsx.ns.getHackTime(targetName));
+    super(nsx, network, targetName, nsx.ns.getServerMaxMoney(targetName));
     this.serverMinSec = nsx.ns.getServerMinSecurityLevel(targetName);
     this.serverMoney = nsx.ns.getServerMoneyAvailable(targetName);
     this.serverGrowth = nsx.ns.getServerGrowth(targetName);
@@ -120,7 +124,7 @@ class PreparerBatcher extends Batcher {
     const idealCost = idealThreads * JobHelpers.ThreadCosts.weaken;
     // If we could, then create the job and return
     if (idealCost <= largestServer.ram) {
-      const server = this.network.findSuitableServer(idealCost);
+      const server = this.network.findSuitableServer(idealCost) as string;
       this.network.reserveRam(server, idealCost);
       batches.push([{ type: JobTypes.weaken1, hostServer: server, threads: idealThreads }]);
       return batches;
@@ -206,7 +210,7 @@ class PreparerBatcher extends Batcher {
     this.network.reserveRam(realServer.name, JobHelpers.ThreadCosts.weaken * weakenThreads);
 
     // Keep trying until we run out of ram or until we finish the server
-    const newMoney = ExpandedNS.calcGrowthFromThreads(currMoney, growThreads, this.serverGrowth);
+    const newMoney = calcGrowthFromThreads(currMoney, growThreads, this.serverGrowth);
     return this.growServerBatches(newMoney, batches);
   }
 
@@ -215,7 +219,7 @@ class PreparerBatcher extends Batcher {
     // Check if this is a grow batch
     if (batches[batchNum][0].type != JobTypes.grow) this.batchGrowth(batches, batchNum + 1, money);
     const threads = batches[batchNum][0].threads;
-    money = ExpandedNS.calcGrowthFromThreads(money, threads, this.serverGrowth);
+    money = calcGrowthFromThreads(money, threads, this.serverGrowth);
     return this.batchGrowth(batches, batchNum + 1, money);
   }
 }
