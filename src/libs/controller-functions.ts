@@ -96,15 +96,15 @@ export class RamNet {
 }
 
 export abstract class Batcher {
-  public abstract runningScripts: number[];
+  abstract runningScripts: number[];
+  port: number = PortErrors.UNDEFINED_PORT_NUM_ERROR;
+  /** @description How long each weaken will take on a server, other timings can be determined from this */
+  readonly hackTime: number;
   constructor(
     protected readonly nsx: ExpandedNS,
     protected readonly network: RamNet,
     readonly targetName: string,
     protected readonly maxMoney: number,
-    /** @description How long each weaken will take on a server, other timings can be determined from this */
-    readonly hackTime: number,
-    public port: number = PortErrors.UNDEFINED_PORT_NUM_ERROR,
   ) {
     this.hackTime = this.nsx.ns.getHackTime(this.targetName);
   }
