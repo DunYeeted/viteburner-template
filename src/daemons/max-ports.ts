@@ -1,11 +1,5 @@
-import {
-  ExpandedNS,
-  PortErrors,
-  PortRequest,
-  RequestTypes,
-  FulfilledPortRequest,
-  ReservedPorts,
-} from '@/libs/ExpandedNS';
+import { ExpandedNS } from '@/libs/ExpandedNS';
+import { ReservedPorts, PortRequest, RequestTypes, PortErrors, FulfilledPortRequest } from '@/libs/port-functions';
 import { NS } from '@ns';
 
 export async function main(ns: NS) {
