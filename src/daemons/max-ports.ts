@@ -38,14 +38,13 @@ Weaving scripts to their destination™`);
 
   let nextFreePort = ReservedPorts.FULFILLED_REQUESTS_PORT + 1;
 
-  const pcPort = ns.getPortHandle(ReservedPorts.REQUEST_PORT);
+  const requestPort = ns.getPortHandle(ReservedPorts.REQUEST_PORT);
 
   while (true) {
     // If the port has something, read it immediately. If it is empty, wait until something needs our attention
-    if (pcPort.empty()) await pcPort.nextWrite();
+    if (requestPort.empty()) await requestPort.nextWrite();
 
-    const request: PortRequest = JSON.parse(ns.peek(ReservedPorts.REQUEST_PORT));
-    ns.readPort(ReservedPorts.REQUEST_PORT);
+    const request: PortRequest = JSON.parse(requestPort.read());
 
     let port: number;
 
