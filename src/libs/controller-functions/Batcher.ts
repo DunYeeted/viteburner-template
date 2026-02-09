@@ -9,13 +9,10 @@ export abstract class Batcher {
   port: number = PortErrors.UNDEFINED_PORT_NUM_ERROR;
   /** @description How long each weaken will take on a server, other timings can be determined from this */
   readonly hackTime: number;
-  constructor(
-    protected readonly nsx: ExpandedNS,
-    protected readonly network: RamNet,
-    readonly targetName: string,
-    protected readonly maxMoney: number,
-  ) {
+  protected readonly maxMoney: number;
+  constructor(protected readonly nsx: ExpandedNS, protected readonly network: RamNet, readonly targetName: string) {
     this.hackTime = this.nsx.ns.getHackTime(this.targetName);
+    this.maxMoney = this.nsx.ns.getServerMaxMoney(this.targetName);
   }
 
   abstract createBatchesList(): hwgwBatch[] | (gwBatch | wBatch)[] | gBatch[];
@@ -241,8 +238,6 @@ export class JobHelpers {
 }
 
 export class BatchHelpers {
-  /** The buffer given to scripts to read the port and react */
-  static BufferTime = 10;
   /** Unreserves the ram for this batch on ramnet */
   static reserveBatch(network: RamNet, batch: gBatch | wBatch | gwBatch | hwgwBatch): void {
     for (const job of batch) {
