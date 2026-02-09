@@ -1,6 +1,9 @@
+import { Batcher, BatchHelpers, hwgwBatch, JobHelpers, IJob } from '@/libs/controller-functions/Batcher';
+import { JobTypes, Timing } from '@/libs/controller-functions/Enums';
+import { RamNet } from '@/libs/controller-functions/RamNet';
 import { ExpandedNS } from '@/libs/ExpandedNS';
 import { FilesData } from '@/libs/FilesData';
-import { Batcher, BatchHelpers, hwgwBatch, IJob, JobHelpers, JobTypes, RamNet } from '@/libs/controller-functions';
+import { PortHelpers } from '@/libs/Ports';
 import { NS } from '@ns';
 
 /** @description How deep the shotgun batcher will go before stopping
@@ -23,10 +26,6 @@ export async function main(ns: NS) {
   }
   const targetName: string = ns.args[0];
 
-  if (!nsx.checkForPortController()) {
-    nsx.scriptError(`No port-controller running!`);
-  }
-
   const sgBatcher = new ShotgunBatcher(nsx, new RamNet(nsx), targetName);
 
   const batches = sgBatcher.createBatchesList();
@@ -36,7 +35,7 @@ export async function main(ns: NS) {
     nsx.scriptError(`Failed to create any batches for ${sgBatcher.targetName}`);
   }
 
-  const portNum = await nsx.requestPort();
+  const portNum = await PortHelpers.requestPort(nsx);
   sgBatcher.port = portNum;
   const hackingLvl = ns.getHackingLevel();
 
@@ -44,42 +43,37 @@ export async function main(ns: NS) {
   const hackChance = ns.hackAnalyzeChance(targetName);
   let endTime = 0;
   const logger = setInterval(() => {
+    const realStolen = sgBatcher.totalPercentStolen(batches) * hackChance;
     ns.clearLog();
-    ns.print(`Hacking: ${ns.args[0]}`);
-    ns.print(`Empty ram: ${sgBatcher.totalRam}`);
-    ns.print(
-      `Stealing: $${ExpandedNS.decimalRound(
-        sgBatcher.percentStolen * ns.getServerMaxMoney(targetName) * hackChance,
-        2,
-      )} (${ExpandedNS.decimalRound(sgBatcher.percentStolen * hackChance * 100, 1)}%)`,
-    );
+    ns.print(`Hacking: ${targetName}`);
+    ns.print(`Empty ram: ${ns.formatRam(sgBatcher.totalRam)}`);
+    ns.print(`Stealing: $${ns.formatNumber(realStolen * sgBatcher.money)} (${ns.formatPercent(realStolen)})`);
     ns.print(`Active workers: ${sgBatcher.runningScripts.length}`);
-    ns.print(`Expected Finish time: ${ns.tFormat(endTime)}`);
+    ns.print(`ETA: ${ns.tFormat(endTime - performance.now())}`);
   }, 1000);
   // Remember to clear the timer and retire the port eventually
   ns.atExit(() => {
-    nsx.retirePort(portNum);
+    PortHelpers.retirePort(nsx, sgBatcher.port);
     clearInterval(logger);
   });
   const port = ns.getPortHandle(portNum);
 
-  while (Batcher.isPrepped(ns, targetName)) {
+  while (sgBatcher.isPrepped()) {
     // Run each batch
     for (let i = 0; i < batches.length; i++) {
-      sgBatcher.runningScripts.push(...(await sgBatcher.runBatch(batches[i], i)));
+      sgBatcher.runningScripts.push(...(await sgBatcher.deployBatch(batches[i], i)));
     }
-    await ns.asleep(10);
+    await ns.asleep(Timing.buffer);
     // Need to give the start signal to the queued workers
-    endTime = performance.now() + sgBatcher.weakenTime + BatchHelpers.BufferTime;
+    endTime = performance.now() + sgBatcher.weakenTime + 10;
     await sgBatcher.sendStartSignal(endTime);
 
     // Wait for the scripts to finish
-    while (sgBatcher.runningScripts.length > 0) {
-      await ns.nextPortWrite(portNum);
-      if (!port.empty()) {
-        sgBatcher.runningScripts.splice(sgBatcher.runningScripts.indexOf(port.read()), 1);
-      }
-    }
+    do {
+      await port.nextWrite();
+      if (!port.empty()) sgBatcher.runningScripts.splice(sgBatcher.runningScripts.indexOf(port.read()), 1);
+    } while (sgBatcher.runningScripts.length > 0);
+
     // Finished this run through
     // Check if we levelled up
     // If we did, restart the script
@@ -92,11 +86,11 @@ export async function main(ns: NS) {
 
 class ShotgunBatcher extends Batcher {
   public runningScripts: number[] = [];
-  public percentStolen: number;
-  constructor(nsx: ExpandedNS, network: RamNet, target: string) {
-    super(nsx, network, target, nsx.ns.getServerMaxMoney(target), undefined, nsx.ns.getHackTime(target));
+  public percentSingleThread: number;
+  constructor(nsx: ExpandedNS, network: RamNet, targetName: string) {
+    super(nsx, network, targetName);
 
-    this.percentStolen = 0;
+    this.percentSingleThread = this.nsx.ns.hackAnalyze(this.targetName);
   }
 
   public createBatchesList(): hwgwBatch[] {
@@ -130,7 +124,7 @@ class ShotgunBatcher extends Batcher {
       if (bestBatch === undefined || bestSteal === undefined) break;
       // Otherwise, push the batch we created and start over creating another batch
       BatchHelpers.unreserveBatch(this.network, bestBatch);
-      this.percentStolen += bestSteal;
+      this.totalPercentStolen += bestSteal;
       batches.push(bestBatch);
     }
 
@@ -217,5 +211,17 @@ class ShotgunBatcher extends Batcher {
     BatchHelpers.unreserveBatch(this.network, batch);
 
     return batch;
+  }
+
+  public totalPercentStolen(batches: hwgwBatch[], batchNum = 0, moneyStolen = 0): number {
+    if (batchNum == batches.length) return moneyStolen;
+
+    const threads = batches[batchNum][0].threads;
+    moneyStolen += this.percentSingleThread * threads;
+    return this.totalPercentStolen(batches, batchNum + 1, moneyStolen);
+  }
+
+  get money() {
+    return this.maxMoney;
   }
 }
