@@ -1,102 +1,8 @@
-import { NS } from '@ns';
-import { ExpandedNS } from './ExpandedNS';
-import { FilesData } from './FilesData';
-import { PortErrors } from './port-functions';
-
-// Weaken is responsible for the desyncs upon leveling up
-// If weakentime decreases, that results in a 4x decrease time in hack and 3.2x time in hacks
-// Therefore, this means that if the change is too large, or grows to be too large, some weaken1s will occur before their corresponding hack
-/** The time between each batch */
-export const TIME_BETWEEN_BATCHES = 1;
-export const TIME_BETWEEN_JOBS = 1;
-
-export class RamNet {
-  // Needs to be an array so we can sort it, which is necessary for largestServer
-  private network: { name: string; ram: number }[];
-
-  constructor(nsx: ExpandedNS) {
-    const servers = nsx.scanAdminServers();
-    // Create the network from the servers we scanned
-    this.network = servers.map((name) => {
-      return { name: name, ram: nsx.emptyRam(name) };
-    });
-
-    this.sortNetwork();
-
-    nsx.ns.tprint(this.network);
-  }
-
-  get largestServer(): { name: string; ram: number } {
-    this.sortNetwork();
-    return this.network[this.network.length - 1];
-  }
-
-  /** Sorts the network from smallest to largest */
-  private sortNetwork(): void {
-    this.network.sort((a, b) => {
-      return a.ram - b.ram;
-    });
-  }
-
-  /**
-   * Finds a server with at least the specified amount of ram
-   * @returns A server or undefined if nothing is found.
-   * @example findSuitableServer(1.70); // Returns 'n00dles'
-   */
-  public findSuitableServer(ram: number): string | undefined {
-    const s = this.network.find((server) => {
-      return server.ram >= ram;
-    });
-
-    if (s == undefined) return undefined;
-    return s.name;
-  }
-
-  /**
-   * 'Reserves' a certain amount of ram on a server so that no other script tries to use the same ram.
-   * @remarks Also sorts the servers after reserving.
-   */
-  public reserveRam(server: string | undefined, ram: number): void {
-    if (server == undefined) return;
-
-    const s = this.network.find((serv) => {
-      return serv.name === server;
-    });
-
-    if (s == undefined) throw new Error(`${server} not defined on network!`);
-
-    s.ram -= ram;
-    console.log(s);
-
-    this.sortNetwork();
-    return;
-  }
-
-  /**
-   * Adds ram to a server, used to undo the effect of reserveRam
-   */
-  public unreserveRam(server: string | undefined, ram: number): void {
-    // if (server == undefined) return;
-
-    // const s = this.network.find((serv) => {
-    //   return serv.name === server;
-    // });
-
-    // if (s == undefined) throw new Error(`${server} not defined on network!`);
-
-    // s.ram += ram;
-    this.reserveRam(server, -1 * ram);
-
-    this.sortNetwork();
-    return;
-  }
-
-  get totalRam(): number {
-    return this.network.reduce((a, c) => {
-      return a + c.ram;
-    }, 0);
-  }
-}
+import { ExpandedNS } from '../ExpandedNS';
+import { FilesData } from '../FilesData';
+import { PortErrors } from '../port-functions';
+import { JobTypes } from './Enums';
+import { RamNet } from './RamNet';
 
 export abstract class Batcher {
   abstract runningScripts: number[];
@@ -225,6 +131,59 @@ export abstract class Batcher {
   }
 }
 
+/**
+ * @description For experience farm batchers
+ *
+ * Types: ['grow']
+ */
+export type gBatch = [IJob];
+
+/**
+ * @description For the first stage of server-preparers, where the only job is weakening the server
+ *
+ * Types: ['weaken']
+ * */
+export type wBatch = [IJob];
+
+/**
+ * @descriptionFor the second part of preppers, where you are maxing money and keeping security as low as possible
+ *
+ * Types in order: ['grow', 'weaken']
+ * */
+export type gwBatch = [IJob, IJob];
+
+/**
+ * @description For full fledged batchers
+ *
+ * Types in order: ['hack', 'weaken1', 'grow', 'weaken2']
+ */
+export type hwgwBatch = [IJob, IJob, IJob, IJob];
+
+/** @description Holds the necessary for running the script in servers */
+export interface IJob {
+  readonly type: JobTypes;
+  threads: number;
+  hostServer: string;
+}
+
+/** @description The args that get passed to a HGW script */
+export interface IWorker {
+  /** @description The server this job runs on (Used in log) */
+  readonly hostServer: string;
+  /** @description This job's type (Used in log) */
+  readonly type: JobTypes;
+  /** @description The server to target */
+  readonly target: string;
+  /** @description How long the corresponding function will take to execute */
+  readonly workTime: number;
+  /** @description Number of the port for the batcher */
+  readonly portNum: number;
+  /** @description The batches' number */
+  readonly batchNum: number;
+  /** @description The job's number in the batch */
+  readonly jobNum: number;
+}
+
 export class JobHelpers {
   static calculateJobCost(j: IJob): number {
     switch (j.type) {
@@ -297,64 +256,4 @@ export class BatchHelpers {
       network.unreserveRam(job.hostServer, JobHelpers.calculateJobCost(job));
     }
   }
-}
-
-/**
- * @description For experience farm batchers
- *
- * Types: ['grow']
- */
-export type gBatch = [IJob];
-/**
- * @description For the first stage of server-preparers, where the only job is weakening the server
- *
- * Types: ['weaken']
- * */
-export type wBatch = [IJob];
-/**
- * @descriptionFor the second part of preppers, where you are maxing money and keeping security as low as possible
- *
- * Types in order: ['grow', 'weaken']
- * */
-export type gwBatch = [IJob, IJob];
-/**
- * @description For full fledged batchers
- *
- * Types in order: ['hack', 'weaken1', 'grow', 'weaken2']
- */
-export type hwgwBatch = [IJob, IJob, IJob, IJob];
-
-/** @description Holds the necessary for running the script in servers */
-export interface IJob {
-  readonly type: JobTypes;
-  threads: number;
-  hostServer: string;
-}
-
-/** @description The args that get passed to a HGW script */
-export interface IWorker {
-  /** @description The server this job runs on (Used in log) */
-  readonly hostServer: string;
-  /** @description This job's type (Used in log) */
-  readonly type: JobTypes;
-
-  /** @description The server to target */
-  readonly target: string;
-
-  /** @description How long the corresponding function will take to execute */
-  readonly workTime: number;
-  /** @description Number of the port for the batcher */
-  readonly portNum: number;
-
-  /** @description The batches' number */
-  readonly batchNum: number;
-  /** @description The job's number in the batch */
-  readonly jobNum: number;
-}
-
-export enum JobTypes {
-  hack,
-  weaken1,
-  grow,
-  weaken2,
 }
