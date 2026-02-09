@@ -37,13 +37,13 @@ export class RamNet {
   }
 
   /**
-   * findSuitableServer
-   * @returns A server with the specified amount of ram or undefined if nothing is found.
+   * Finds a server with at least the specified amount of ram
+   * @returns A server or undefined if nothing is found.
    * @example findSuitableServer(1.70); // Returns 'n00dles'
    */
   public findSuitableServer(ram: number): string | undefined {
     const s = this.network.find((server) => {
-      server.ram > ram;
+      server.ram >= ram;
     });
 
     if (s == undefined) return undefined;
@@ -52,7 +52,7 @@ export class RamNet {
 
   /**
    * 'Reserves' a certain amount of ram on a server so that no other script tries to use the same ram.
-   * Also sorts the servers after reserving.
+   * @remarks Also sorts the servers after reserving.
    */
   public reserveRam(server: string | undefined, ram: number): void {
     if (server == undefined) return;
@@ -71,18 +71,19 @@ export class RamNet {
   }
 
   /**
-   * Adds ram to a server, effectively undoing any reservations from before
+   * Adds ram to a server, used to undo the effect of reserveRam
    */
   public unreserveRam(server: string | undefined, ram: number): void {
-    if (server == undefined) return;
+    // if (server == undefined) return;
 
-    const s = this.network.find((serv) => {
-      return serv.name === server;
-    });
+    // const s = this.network.find((serv) => {
+    //   return serv.name === server;
+    // });
 
-    if (s == undefined) throw new Error(`${server} not defined on network!`);
+    // if (s == undefined) throw new Error(`${server} not defined on network!`);
 
-    s.ram += ram;
+    // s.ram += ram;
+    this.reserveRam(server, -1 * ram);
 
     this.sortNetwork();
     return;
