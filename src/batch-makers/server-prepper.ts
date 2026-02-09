@@ -3,6 +3,7 @@ import { Batcher, BatchHelpers, gwBatch, JobHelpers, JobTypes, RamNet, wBatch } 
 import { ExpandedNS } from '@/libs/ExpandedNS';
 import { FilesData } from '@/libs/FilesData';
 import { PortHelpers } from '@/libs/port-functions';
+import { calcGrowthFromThreads } from '@/libs/utils';
 
 export async function main(ns: NS) {
   const nsx = new ExpandedNS(ns);
