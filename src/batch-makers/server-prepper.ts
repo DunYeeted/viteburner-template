@@ -35,14 +35,11 @@ export async function main(ns: NS) {
   let batches: (gwBatch | wBatch)[] = [];
   const logger = setInterval(() => {
     prospectedMoney = pBatcher.batchGrowth(batches);
-    const currentMoney = ns.getServerMoneyAvailable(targetName);
+    const currentMoney = Math.max(ns.getServerMoneyAvailable(targetName), 1);
     ns.clearLog();
     ns.print(`Hacking: ${targetName}`);
-    ns.print(`Empty ram: ${pBatcher.totalRam}`);
-    ns.print(
-      `Growing: $${prospectedMoney}
-      )} (${decimalRound((prospectedMoney / currentMoney) * 100, 2)}%)`,
-    );
+    ns.print(`Empty ram: ${ns.formatRam(pBatcher.totalRam)}`);
+    ns.print(`Growing: $${prospectedMoney} (${ns.formatPercent(prospectedMoney / currentMoney)}%)`);
     ns.print(`Active workers: ${pBatcher.runningScripts.length}`);
     ns.print(`ETA: ${ns.tFormat(endTime - performance.now())}`);
   }, 1000);
