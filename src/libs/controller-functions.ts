@@ -22,6 +22,8 @@ export class RamNet {
     });
 
     this.sortNetwork();
+
+    nsx.ns.tprint(this.network);
   }
 
   get largestServer(): { name: string; ram: number } {
@@ -43,7 +45,7 @@ export class RamNet {
    */
   public findSuitableServer(ram: number): string | undefined {
     const s = this.network.find((server) => {
-      server.ram >= ram;
+      return server.ram >= ram;
     });
 
     if (s == undefined) return undefined;
