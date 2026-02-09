@@ -32,7 +32,7 @@ export class RamNet {
   /** Sorts the network from smallest to largest */
   private sortNetwork(): void {
     this.network.sort((a, b) => {
-      return b.ram - a.ram;
+      return a.ram - b.ram;
     });
   }
 
