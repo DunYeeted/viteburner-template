@@ -225,3 +225,7 @@ class ShotgunBatcher extends Batcher {
     return this.maxMoney;
   }
 }
+
+export function autocomplete(data: AutocompleteData, _args: ScriptArg) {
+  return [...data.servers];
+}
