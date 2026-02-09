@@ -1,3 +1,5 @@
+// Functions that don't use ns at all
+
 export function filenameFromPath(path: string): string {
   return path.substring(path.lastIndexOf(`/`));
 }
@@ -7,5 +9,5 @@ export function decimalRound(num: number, placesAfterDecimal: number) {
 }
 
 export function calcGrowthFromThreads(currMoney: number, threads: number, growthMultiplier: number) {
-  return (currMoney + threads) * Math.exp(growthMultiplier * threads);
+  return (currMoney + threads) * Math.exp((growthMultiplier / 100) * threads);
 }
