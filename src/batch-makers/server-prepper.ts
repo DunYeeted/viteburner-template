@@ -3,7 +3,7 @@ import { ExpandedNS } from '@/libs/ExpandedNS';
 import { FilesData } from '@/libs/FilesData';
 import { PortHelpers } from '@/libs/Ports';
 import { calcGrowthFromThreads } from '@/libs/utils';
-import { JobHelpers, gwBatch, wBatch, BatchHelpers, Batcher } from '@/libs/controller-functions/Batcher';
+import { JobHelpers, gwBatch, wBatch, Batcher } from '@/libs/controller-functions/Batcher';
 import { JobTypes, Timing } from '@/libs/controller-functions/Enums';
 import { RamNet } from '@/libs/controller-functions/RamNet';
 
