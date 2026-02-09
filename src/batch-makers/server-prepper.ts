@@ -94,13 +94,13 @@ class PreparerBatcher extends Batcher {
   readonly serverGrowth: number;
 
   constructor(nsx: ExpandedNS, network: RamNet, targetName: string) {
-    super(nsx, network, targetName, nsx.ns.getServerMaxMoney(targetName));
+    super(nsx, network, targetName);
     this.serverMinSec = nsx.ns.getServerMinSecurityLevel(targetName);
     this.serverMoney = nsx.ns.getServerMoneyAvailable(targetName);
     this.serverGrowth = nsx.ns.getServerGrowth(targetName);
   }
 
-  createBatchesList(): (gwBatch | wBatch)[] {
+  public createBatchesList(): (gwBatch | wBatch)[] {
     const serverCurrSec = this.nsx.ns.getServerSecurityLevel(this.targetName);
     const batches: (gwBatch | wBatch)[] = [];
 
@@ -112,7 +112,7 @@ class PreparerBatcher extends Batcher {
     return batches;
   }
 
-  weakenServerBatches(currSec: number, batches: wBatch[] = []): wBatch[] {
+  private weakenServerBatches(currSec: number, batches: wBatch[] = []): wBatch[] {
     const largestServer = this.network.largestServer;
     // First check if we can even run a weaken thread, if not then we just return what we have
     if (largestServer.ram < JobHelpers.ThreadCosts.weaken) return batches;
@@ -138,7 +138,7 @@ class PreparerBatcher extends Batcher {
     return this.weakenServerBatches(currSec - greatestPossibleThreads * 0.05, batches);
   }
 
-  growServerBatches(currMoney: number, batches: gwBatch[] = []): gwBatch[] {
+  private growServerBatches(currMoney: number, batches: gwBatch[] = []): gwBatch[] {
     // First check if the network has enough ram to run both a grow and weaken thread at least.
     if (this.network.largestServer.ram < JobHelpers.ThreadCosts.grow + JobHelpers.ThreadCosts.weaken) return batches;
 
