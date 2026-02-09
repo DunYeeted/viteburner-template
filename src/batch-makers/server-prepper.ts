@@ -39,7 +39,9 @@ export async function main(ns: NS) {
     ns.clearLog();
     ns.print(`Hacking ${targetName}`);
     ns.print(`Empty ram: ${ns.formatRam(pBatcher.totalRam)}`);
-    ns.print(`Growing: $${prospectedMoney - currentMoney} (${ns.formatPercent(prospectedMoney / currentMoney)})`);
+    ns.print(`Prep Info -
+  To:$${ns.formatNumber(prospectedMoney)}
+  Change: ${ns.formatNumber(prospectedMoney - currentMoney)} (${ns.formatPercent(prospectedMoney / currentMoney)})`);
     ns.print(`Active workers: ${pBatcher.runningScripts.length}`);
     ns.print(`ETA: ${ns.tFormat(endTime - performance.now())}`);
   }, 1000);
