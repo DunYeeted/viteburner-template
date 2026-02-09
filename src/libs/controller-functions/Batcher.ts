@@ -1,6 +1,6 @@
 import { ExpandedNS } from '../ExpandedNS';
 import { FilesData } from '../FilesData';
-import { PortErrors } from '../port-functions';
+import { PortErrors } from '../Ports';
 import { JobTypes } from './Enums';
 import { RamNet } from './RamNet';
 

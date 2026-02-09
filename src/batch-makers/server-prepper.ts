@@ -1,9 +1,11 @@
 import { AutocompleteData, NS, ScriptArg } from '@ns';
-import { Batcher, BatchHelpers, gwBatch, JobHelpers, JobTypes, RamNet, wBatch } from '@/libs/controller-functions';
 import { ExpandedNS } from '@/libs/ExpandedNS';
 import { FilesData } from '@/libs/FilesData';
-import { PortHelpers } from '@/libs/port-functions';
+import { PortHelpers } from '@/libs/Ports';
 import { calcGrowthFromThreads } from '@/libs/utils';
+import { JobHelpers, gwBatch, wBatch, BatchHelpers, Batcher } from '@/libs/controller-functions/Batcher';
+import { JobTypes } from '@/libs/controller-functions/Enums';
+import { RamNet } from '@/libs/controller-functions/RamNet';
 
 export async function main(ns: NS) {
   const nsx = new ExpandedNS(ns);
