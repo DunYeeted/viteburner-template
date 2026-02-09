@@ -4,7 +4,7 @@ import { FilesData } from '@/libs/FilesData';
 import { PortHelpers } from '@/libs/Ports';
 import { calcGrowthFromThreads } from '@/libs/utils';
 import { JobHelpers, gwBatch, wBatch, BatchHelpers, Batcher } from '@/libs/controller-functions/Batcher';
-import { JobTypes } from '@/libs/controller-functions/Enums';
+import { JobTypes, Timing } from '@/libs/controller-functions/Enums';
 import { RamNet } from '@/libs/controller-functions/RamNet';
 
 export async function main(ns: NS) {
@@ -61,9 +61,9 @@ export async function main(ns: NS) {
     for (let i = 0; i < batches.length; i++) {
       pBatcher.runningScripts.push(...(await pBatcher.deployBatch(batches[i], i)));
     }
-    await ns.asleep(50);
+    await ns.asleep(Timing.buffer);
     // Need to give the start signal to the queued workers
-    endTime = performance.now() + pBatcher.weakenTime + BatchHelpers.BufferTime;
+    endTime = performance.now() + pBatcher.weakenTime + 10;
     await pBatcher.sendStartSignal(endTime);
 
     // Wait for the scripts to finish
@@ -212,7 +212,7 @@ class PreparerBatcher extends Batcher {
     return this.growServerBatches(newMoney, batches);
   }
 
-  batchGrowth(batches: (gwBatch | wBatch)[], batchNum = 0, money: number = this.serverMoney): number {
+  public batchGrowth(batches: (gwBatch | wBatch)[], batchNum = 0, money: number = this.serverMoney): number {
     if (batchNum == batches.length) return money;
     // Check if this is a grow batch
     if (batches[batchNum][0].type != JobTypes.grow) return this.batchGrowth(batches, batchNum + 1, money);
