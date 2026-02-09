@@ -37,9 +37,9 @@ export async function main(ns: NS) {
     prospectedMoney = pBatcher.batchGrowth(batches);
     const currentMoney = Math.max(ns.getServerMoneyAvailable(targetName), 1);
     ns.clearLog();
-    ns.print(`Hacking: ${targetName}`);
+    ns.print(`Hacking ${targetName}`);
     ns.print(`Empty ram: ${ns.formatRam(pBatcher.totalRam)}`);
-    ns.print(`Growing: $${prospectedMoney} (${ns.formatPercent(prospectedMoney / currentMoney)}%)`);
+    ns.print(`Growing: $${prospectedMoney - currentMoney} (${ns.formatPercent(prospectedMoney / currentMoney)})`);
     ns.print(`Active workers: ${pBatcher.runningScripts.length}`);
     ns.print(`ETA: ${ns.tFormat(endTime - performance.now())}`);
   }, 1000);
@@ -211,7 +211,7 @@ class PreparerBatcher extends Batcher {
   batchGrowth(batches: (gwBatch | wBatch)[], batchNum = 0, money: number = this.serverMoney): number {
     if (batchNum == batches.length) return money;
     // Check if this is a grow batch
-    if (batches[batchNum][0].type != JobTypes.grow) this.batchGrowth(batches, batchNum + 1, money);
+    if (batches[batchNum][0].type != JobTypes.grow) return this.batchGrowth(batches, batchNum + 1, money);
     const threads = batches[batchNum][0].threads;
     money = calcGrowthFromThreads(money, threads, this.serverGrowth);
     return this.batchGrowth(batches, batchNum + 1, money);
