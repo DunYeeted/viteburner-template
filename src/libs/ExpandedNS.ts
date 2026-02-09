@@ -171,7 +171,7 @@ export class ExpandedNS {
     return (
       this.ns.ps().findIndex((process) => {
         return process.filename == this.ns.getScriptName() && process.pid != this.ns.pid;
-      }) != 1
+      }) != -1
     );
   }
 
