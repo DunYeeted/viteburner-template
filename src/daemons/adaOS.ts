@@ -54,7 +54,7 @@ export function bestTargetServer(nsx: ExpandedNS): string {
     const score =
       hackingLevel < requiredHackingLevel
         ? -1
-        : hackingLevel >= requiredHackingLevel / 2
+        : hackingLevel < requiredHackingLevel / 2
         ? 0
         : nsx.ns.getServerMaxMoney(serverName) / nsx.ns.getServerMinSecurityLevel(serverName);
 
