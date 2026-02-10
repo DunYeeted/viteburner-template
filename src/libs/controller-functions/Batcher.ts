@@ -23,7 +23,7 @@ export abstract class Batcher {
    * @param server
    * @returns True if the server has its maximum money and minimum security level
    */
-  public isPrepped() {
+  public get isPrepped() {
     return (
       this.nsx.ns.getServerMaxMoney(this.targetName) == this.nsx.ns.getServerMoneyAvailable(this.targetName) &&
       this.nsx.ns.getServerMinSecurityLevel(this.targetName) == this.nsx.ns.getServerSecurityLevel(this.targetName)
