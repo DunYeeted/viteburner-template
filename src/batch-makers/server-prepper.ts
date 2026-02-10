@@ -144,7 +144,7 @@ class PreparerBatcher extends Batcher {
     if (this.network.largestServer.ram < JobHelpers.ThreadCosts.grow + JobHelpers.ThreadCosts.weaken) return batches;
 
     // Otherwise, check if we can get to the max in a single batch
-    const idealGrowThreads = this.nsx.ns.growthAnalyze(this.targetName, this.maxMoney / currMoney);
+    const idealGrowThreads = Math.ceil(this.nsx.ns.growthAnalyze(this.targetName, this.maxMoney / currMoney));
     const idealGrowCost = idealGrowThreads * JobHelpers.ThreadCosts.grow;
     const idealGrowServer = this.network.findSuitableServer(idealGrowCost);
     this.network.reserveRam(idealGrowServer, idealGrowCost);

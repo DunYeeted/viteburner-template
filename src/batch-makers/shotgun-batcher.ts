@@ -138,7 +138,9 @@ class ShotgunBatcher extends Batcher {
       1,
     );
     const hackCost = hackThreads * JobHelpers.ThreadCosts.hack;
-    const growThreads = this.nsx.ns.growthAnalyze(this.targetName, 1 / (1 - this.percentSingleThread * hackThreads));
+    const growThreads = Math.ceil(
+      this.nsx.ns.growthAnalyze(this.targetName, 1 / (1 - this.percentSingleThread * hackThreads)),
+    );
     const growCost = growThreads * JobHelpers.ThreadCosts.grow;
 
     let hackServer: string | undefined;
