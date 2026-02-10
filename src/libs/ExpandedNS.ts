@@ -122,7 +122,7 @@ export class ExpandedNS {
     server: string,
     startMoney: number = this.ns.getServerMoneyAvailable(server),
     targetMoney: number = this.ns.getServerMaxMoney(server),
-    growth: number = this.ns.getServerGrowth(server) / 100,
+    growth: number = this.ns.getServerGrowth(server),
   ) {
     // Initial guess for the number of threads since we're doing a newtonian approximation and need one
     let threads = (targetMoney - startMoney) / (1 + (targetMoney * (1 / 16) + startMoney * (15 / 16)) * growth);
@@ -137,7 +137,7 @@ export class ExpandedNS {
       diff = newThreads - threads;
       threads = newThreads;
     } while (Math.abs(diff) > 1);
-    // The actual function has some more checking for edge cases here which I might need to do if I run into the too often, but it should be fine enough
+    // The actual function has some more checking for edge cases here which I might need to do if I run into the too often, but for my use cases it should be good enough
     return Math.ceil(threads);
   }
 

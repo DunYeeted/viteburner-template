@@ -16,7 +16,7 @@ export function decimalRound(num: number, placesAfterDecimal: number) {
  * @returns The server's money after a growth with the specified threads
  */
 export function calcGrowthFromThreads(currMoney: number, threads: number, growthMultiplier: number) {
-  return (currMoney + threads) * Math.exp((growthMultiplier / 100) * threads);
+  return (currMoney + threads) * Math.exp(growthMultiplier * threads);
 }
 
 export function clamp(max: number, min: number, n: number): number {
