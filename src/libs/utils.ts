@@ -18,3 +18,7 @@ export function decimalRound(num: number, placesAfterDecimal: number) {
 export function calcGrowthFromThreads(currMoney: number, threads: number, growthMultiplier: number) {
   return (currMoney + threads) * Math.exp((growthMultiplier / 100) * threads);
 }
+
+export function clamp(max: number, min: number, n: number): number {
+  return Math.max(max, Math.min(min, n));
+}
