@@ -116,12 +116,13 @@ export class ExpandedNS {
    * @param server The name of the server
    * @param startMoney How much money the server starts with, if undefined, it assumes starting at the current money.
    * @param targetMoney How much money the server ends with, if undefined, it assumes the max money.
+   * @param growth The server's growth parameter, ranges from 0-1, inclusive
    */
   calcGrowThreads(
     server: string,
     startMoney: number = this.ns.getServerMoneyAvailable(server),
     targetMoney: number = this.ns.getServerMaxMoney(server),
-    growth: number = this.ns.getServerGrowth(server),
+    growth: number = this.ns.getServerGrowth(server) / 100,
   ) {
     // Initial guess for the number of threads since we're doing a newtonian approximation and need one
     let threads = (targetMoney - startMoney) / (1 + (targetMoney * (1 / 16) + startMoney * (15 / 16)) * growth);
