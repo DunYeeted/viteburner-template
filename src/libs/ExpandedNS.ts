@@ -128,18 +128,17 @@ export class ExpandedNS {
     server: string,
     startMoney: number = this.ns.getServerMoneyAvailable(server),
     targetMoney: number = this.ns.getServerMaxMoney(server),
+    growth: number = this.ns.getServerGrowth(server),
   ) {
-    const serverGrowth = this.ns.getServerGrowth(server);
-
     // Initial guess for the number of threads since we're doing a newtonian approximation and need one
-    let threads = (targetMoney - startMoney) / (1 + (targetMoney * (1 / 16) + startMoney * (15 / 16)) * serverGrowth);
+    let threads = (targetMoney - startMoney) / (1 + (targetMoney * (1 / 16) + startMoney * (15 / 16)) * growth);
     let diff = -1;
     do {
       // Each thread adds $1, this is how we account for that
       const startingMoney = startMoney + threads;
 
       const newThreads =
-        (threads - startingMoney * Math.log(startingMoney / targetMoney)) / (1 + startingMoney * serverGrowth);
+        (threads - startingMoney * Math.log(startingMoney / targetMoney)) / (1 + startingMoney * growth);
 
       diff = newThreads - threads;
       threads = newThreads;
