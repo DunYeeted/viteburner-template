@@ -4,7 +4,7 @@ import { RamNet } from '@/libs/controller-functions/RamNet';
 import { ExpandedNS } from '@/libs/ExpandedNS';
 import { FilesData } from '@/libs/FilesData';
 import { PortHelpers } from '@/libs/Ports';
-import { NS } from '@ns';
+import { AutocompleteData, NS, ScriptArg } from '@ns';
 
 /** @description How deep the shotgun batcher will go before stopping
  *
@@ -15,25 +15,25 @@ const RESOLUTION = 8;
 export async function main(ns: NS) {
   const nsx = new ExpandedNS(ns);
 
-  ns.disableLog(`ALL`);
-  ns.enableLog(`print`);
-
   if (ns.args.length != 1 || typeof ns.args[0] !== `string`) {
     ns.tprint(`Incorrect usage!:
-      ./batch-makers/shotgun-batcher.js <server>
-      ./batch-makers/shotgun-batcher.js foodnstuff`);
+  ./batch-makers/shotgun-batcher.js <server>
+  ./batch-makers/shotgun-batcher.js foodnstuff`);
     return;
   }
+
+  ns.disableLog(`ALL`);
+  ns.enableLog(`print`);
   const targetName: string = ns.args[0];
-
   const sgBatcher = new ShotgunBatcher(nsx, new RamNet(nsx), targetName);
-
   const batches = sgBatcher.createBatchesList();
 
   // Now that we're done, check if we made any batches
   if (batches.length == 0) {
     nsx.scriptError(`Failed to create any batches for ${sgBatcher.targetName}`);
   }
+
+  ns.tprint(batches);
 
   const portNum = await PortHelpers.requestPort(nsx);
   sgBatcher.port = portNum;
@@ -51,11 +51,13 @@ export async function main(ns: NS) {
     ns.print(`Active workers: ${sgBatcher.runningScripts.length}`);
     ns.print(`ETA: ${ns.tFormat(endTime - performance.now())}`);
   }, 1000);
+
   // Remember to clear the timer and retire the port eventually
   ns.atExit(() => {
     PortHelpers.retirePort(nsx, sgBatcher.port);
     clearInterval(logger);
   });
+
   const port = ns.getPortHandle(portNum);
 
   while (sgBatcher.isPrepped()) {
@@ -82,6 +84,8 @@ export async function main(ns: NS) {
     }
     // Otherwise, loop around again
   }
+
+  nsx.scriptError(`Something went wrong and the server is no longer at ideal stats`);
 }
 
 class ShotgunBatcher extends Batcher {
@@ -98,33 +102,30 @@ class ShotgunBatcher extends Batcher {
     // Create batches
     while (true) {
       let bestBatch: hwgwBatch | undefined;
-      let bestSteal: number | undefined;
       // Create one singular batch that is as large as possible
-      let maxSteal = 0;
-      let minSteal = 1;
+      let maxSteal = 1;
+      let minSteal = 0;
 
       for (let i = 0; i < RESOLUTION; i++) {
         const stealPercent = 0.5 * (maxSteal + minSteal);
         const batch = this.createSingleBatch(stealPercent);
 
         // If we failed to create a batch at this steal percent, we need to lower the next steal percent
-        if (batch == undefined) {
+        if (batch === undefined) {
           maxSteal = stealPercent;
         } else {
           // If we succeeded we can try to increase the steal percent
           minSteal = stealPercent;
-          // Remember to update our best possible batch
+          // Update our best possible batch
           bestBatch = batch;
-          bestSteal = stealPercent;
         }
       }
-
       // Once we've gone through everything above then we can check what the largest batch we can create is
+
       // If we failed to create any batch, then stop making more
-      if (bestBatch === undefined || bestSteal === undefined) break;
+      if (bestBatch === undefined) break;
       // Otherwise, push the batch we created and start over creating another batch
-      BatchHelpers.unreserveBatch(this.network, bestBatch);
-      this.totalPercentStolen += bestSteal;
+      BatchHelpers.reserveBatch(this.network, bestBatch);
       batches.push(bestBatch);
     }
 
@@ -133,31 +134,34 @@ class ShotgunBatcher extends Batcher {
 
   private createSingleBatch(percentStealing: number): hwgwBatch | undefined {
     // First, check how many threads are necessary for each job
-    const hackThreads = Math.floor(this.nsx.ns.hackAnalyzeThreads(this.targetName, percentStealing * this.maxMoney));
-    const hackCost = JobHelpers.calculateServerlessJobCost(hackThreads, JobTypes.hack);
+    const hackThreads = Math.max(
+      Math.floor(this.nsx.ns.hackAnalyzeThreads(this.targetName, percentStealing * this.maxMoney)),
+      1,
+    );
+    const hackCost = hackThreads * JobHelpers.ThreadCosts.hack;
     const growThreads = this.nsx.calcGrowThreads(
       this.targetName,
       this.maxMoney - hackThreads * this.nsx.ns.hackAnalyze(this.targetName),
+      this.maxMoney,
     );
-    const growCost = JobHelpers.calculateServerlessJobCost(growThreads, JobTypes.grow);
+    const growCost = growThreads * JobHelpers.ThreadCosts.grow;
 
     let hackServer: string | undefined;
     let growServer: string | undefined;
 
     // Check if we can find a server that can support these threads
     if (hackCost > growCost) {
-      hackServer = this.network.findSuitableServer(JobHelpers.calculateServerlessJobCost(hackThreads, JobTypes.hack));
+      hackServer = this.network.findSuitableServer(hackCost);
       this.network.reserveRam(hackServer, hackCost);
-      growServer = this.network.findSuitableServer(JobHelpers.calculateServerlessJobCost(growThreads, JobTypes.grow));
+      growServer = this.network.findSuitableServer(growCost);
       this.network.reserveRam(growServer, growCost);
     } else {
-      growServer = this.network.findSuitableServer(JobHelpers.calculateServerlessJobCost(growThreads, JobTypes.grow));
+      growServer = this.network.findSuitableServer(growCost);
       this.network.reserveRam(growServer, growCost);
-      hackServer = this.network.findSuitableServer(JobHelpers.calculateServerlessJobCost(hackThreads, JobTypes.hack));
+      hackServer = this.network.findSuitableServer(hackCost);
       this.network.reserveRam(hackServer, hackCost);
     }
 
-    // Fails if we cannot
     if (hackServer == undefined || growServer == undefined) {
       this.network.unreserveRam(hackServer, hackCost);
       this.network.unreserveRam(growServer, growCost);
@@ -167,9 +171,9 @@ class ShotgunBatcher extends Batcher {
     // Also check if we can find servers to host the weakens
     // Technically, we should do the same thing as above, but it probably doesn't make a big difference so who cares
     const weaken1Threads = JobHelpers.calcWeaken1Threads(hackThreads);
-    const weaken1Cost = JobHelpers.calculateServerlessJobCost(weaken1Threads, JobTypes.weaken1);
+    const weaken1Cost = weaken1Threads * JobHelpers.ThreadCosts.weaken;
     const weaken2Threads = JobHelpers.calcWeaken2Threads(growThreads);
-    const weaken2Cost = JobHelpers.calculateServerlessJobCost(weaken2Threads, JobTypes.weaken2);
+    const weaken2Cost = weaken2Threads * JobHelpers.ThreadCosts.weaken;
 
     const weaken1Server = this.network.findSuitableServer(weaken1Cost);
     this.network.reserveRam(weaken1Server, weaken1Cost);
@@ -177,6 +181,8 @@ class ShotgunBatcher extends Batcher {
     this.network.reserveRam(weaken2Server, weaken2Cost);
 
     if (weaken1Server == undefined || weaken2Server == undefined) {
+      this.network.unreserveRam(hackServer, hackCost);
+      this.network.unreserveRam(growServer, growCost);
       this.network.unreserveRam(weaken1Server, weaken1Cost);
       this.network.unreserveRam(weaken2Server, weaken2Cost);
       return undefined;
