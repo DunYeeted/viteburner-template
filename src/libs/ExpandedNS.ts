@@ -27,7 +27,7 @@ export class ExpandedNS {
    */
   scanAdminServers(): string[] {
     return this.scanServers().filter((s) => {
-      return this.ns.hasRootAccess(s);
+      return this.ns.hasRootAccess(s) && s !== `home`;
     });
   }
 
@@ -122,7 +122,7 @@ export class ExpandedNS {
     server: string,
     startMoney: number = this.ns.getServerMoneyAvailable(server),
     targetMoney: number = this.ns.getServerMaxMoney(server),
-    growth: number = this.ns.getServerGrowth(server),
+    growth: number = this.ns.getServerGrowth(server) / 10000,
   ) {
     // Initial guess for the number of threads since we're doing a newtonian approximation and need one
     let threads = (targetMoney - startMoney) / (1 + (targetMoney * (1 / 16) + startMoney * (15 / 16)) * growth);
