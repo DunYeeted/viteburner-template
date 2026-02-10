@@ -1,6 +1,8 @@
 // IMPORTANT: Make sure that this script has as little imports as possible, preferably none
 import { NS } from '@ns';
 
+const BITNODE_GROWTH_MULTIPLIER = 1;
+
 export class ExpandedNS {
   public ns: NS;
   constructor(ns: NS) {
@@ -118,27 +120,82 @@ export class ExpandedNS {
    * @param targetMoney How much money the server ends with, if undefined, it assumes the max money.
    * @param growth The server's growth parameter, ranges from 0-1, inclusive
    */
-  calcGrowThreads(
+  calculateGrowThreads(
     server: string,
+    growth: number = this.ns.getServerGrowth(server),
+    playerGrowMulti = this.ns.getPlayer().mults.hacking_grow,
+    bitnodeGrowthRate = BITNODE_GROWTH_MULTIPLIER,
     startMoney: number = this.ns.getServerMoneyAvailable(server),
     targetMoney: number = this.ns.getServerMaxMoney(server),
-    growth: number = this.ns.getServerGrowth(server) / 10000,
   ) {
+    const growthLog = this.calculateGrowthLog(1, growth, playerGrowMulti, bitnodeGrowthRate);
     // Initial guess for the number of threads since we're doing a newtonian approximation and need one
-    let threads = (targetMoney - startMoney) / (1 + (targetMoney * (1 / 16) + startMoney * (15 / 16)) * growth);
+    let threads = (targetMoney - startMoney) / (1 + (targetMoney * (1 / 16) + startMoney * (15 / 16)) * growthLog);
     let diff = -1;
     do {
       // Each thread adds $1, this is how we account for that
       const startingMoney = startMoney + threads;
 
       const newThreads =
-        (threads - startingMoney * Math.log(startingMoney / targetMoney)) / (1 + startingMoney * growth);
+        (threads - startingMoney * Math.log(startingMoney / targetMoney)) / (1 + startingMoney * growthLog);
 
       diff = newThreads - threads;
       threads = newThreads;
     } while (Math.abs(diff) > 1);
     // The actual function has some more checking for edge cases here which I might need to do if I run into the too often, but for my use cases it should be good enough
-    return Math.ceil(threads);
+    return threads;
+  }
+
+  /**
+   * Calculate the amount a server will grow to after an ns.grow with a certain number of threads
+   *
+   * @remarks This function assumes that the server is at minimum security!
+   *
+   * @param currMoney Current money of the server
+   * @param threads How many growth threads a single script is using
+   * @param growthRate Growth parameter of the server (from ns.getServerGrowth())
+   * @returns The server's money after a growth with the specified threads
+   */
+  calculateGrowthLog(
+    threads: number,
+    growthRate: number,
+    playerGrowMulti = this.ns.getPlayer().mults.hacking_grow,
+    bitnodeGrowthRate = BITNODE_GROWTH_MULTIPLIER,
+  ) {
+    if (threads < 1) return -Infinity;
+
+    const trueGrowthPercentage = (growthRate / 100) * bitnodeGrowthRate;
+
+    // Could implement the core bonus here
+
+    // 0.00349388925425578 is the growthLog, which is calculated in the actual function
+    // Since we're assuming the server is already prepped though, this is the max it can go to
+    return 0.00349388925425578 * trueGrowthPercentage * playerGrowMulti * threads;
+  }
+
+  /**
+   * Calculates the server's money after running a grow with ns.threads amount of threads
+   * @param currMoney The amount of money on the server
+   * @param threads
+   * @param growthRate Growth parameter of the server (from ns.getServerGrowth())
+   * @param playerGrowMulti The player's multiplier to growth (from augmentations)
+   * @param bitnodeGrowthRate The growth rate multiplier of the current bitnode
+   * @returns The server's new money
+   */
+  calculateServerGrowth(
+    currMoney: number,
+    threads: number,
+    growthRate: number,
+    playerGrowMulti = this.ns.getPlayer().mults.hacking_grow,
+    bitnodeGrowthRate = BITNODE_GROWTH_MULTIPLIER,
+  ): number {
+    const multiplier = Math.exp(this.calculateGrowthLog(threads, growthRate, playerGrowMulti, bitnodeGrowthRate));
+
+    let money = currMoney;
+    money += threads;
+    money *= multiplier;
+
+    return money;
   }
 
   /**

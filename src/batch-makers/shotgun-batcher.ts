@@ -1,5 +1,5 @@
 import { Batcher, BatchHelpers, hwgwBatch, JobHelpers, IJob } from '@/libs/controller-functions/Batcher';
-import { JobTypes, Timing } from '@/libs/controller-functions/Enums';
+import { JobTypes, Timing } from '@/libs/controller-functions/Constants';
 import { RamNet } from '@/libs/controller-functions/RamNet';
 import { ExpandedNS } from '@/libs/ExpandedNS';
 import { FilesData } from '@/libs/FilesData';
@@ -139,7 +139,14 @@ class ShotgunBatcher extends Batcher {
     );
     const hackCost = hackThreads * JobHelpers.ThreadCosts.hack;
     const growThreads = Math.ceil(
-      this.nsx.ns.growthAnalyze(this.targetName, 1 / (1 - this.percentSingleThread * hackThreads)),
+      this.nsx.calculateGrowThreads(
+        this.targetName,
+        this.serverGrowth,
+        this.playerGrowthMulti,
+        this.bitnodeGrowthMulti,
+        this.maxMoney * (1 - this.percentSingleThread * hackThreads),
+        this.maxMoney,
+      ),
     );
     const growCost = growThreads * JobHelpers.ThreadCosts.grow;
 
@@ -167,9 +174,9 @@ class ShotgunBatcher extends Batcher {
 
     // Also check if we can find servers to host the weakens
     // Technically, we should do the same thing as above, but it probably doesn't make a big difference so who cares
-    const weaken1Threads = JobHelpers.calcWeaken1Threads(hackThreads);
+    const weaken1Threads = JobHelpers.calcWeakenThreads(hackThreads);
     const weaken1Cost = weaken1Threads * JobHelpers.ThreadCosts.weaken;
-    const weaken2Threads = JobHelpers.calcWeaken2Threads(growThreads);
+    const weaken2Threads = JobHelpers.calcWeakenThreads(growThreads);
     const weaken2Cost = weaken2Threads * JobHelpers.ThreadCosts.weaken;
 
     const weaken1Server = this.network.findSuitableServer(weaken1Cost);
