@@ -58,7 +58,7 @@ export async function main(ns: NS) {
 
   const port = ns.getPortHandle(portNum);
 
-  while (sgBatcher.isPrepped()) {
+  while (sgBatcher.isPrepped) {
     // Run each batch
     for (let i = 0; i < batches.length; i++) {
       sgBatcher.runningScripts.push(...(await sgBatcher.deployBatch(batches[i], i)));
@@ -78,6 +78,7 @@ export async function main(ns: NS) {
     // Check if we levelled up
     // If we did, restart the script
     if (ns.getHackingLevel() !== hackingLvl) {
+      ns.print(`Levelled up, restarting...`);
       ns.spawn(FilesData['Batcher'].path, { spawnDelay: 0 }, ...ns.args);
     }
     // Otherwise, loop around again

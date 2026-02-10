@@ -55,7 +55,7 @@ export async function main(ns: NS) {
   });
   const port = ns.getPortHandle(portNum);
 
-  while (!pBatcher.isPrepped()) {
+  while (!pBatcher.isPrepped) {
     batches = pBatcher.createBatchesList();
     // Run each batch
     for (let i = 0; i < batches.length; i++) {
@@ -77,6 +77,7 @@ export async function main(ns: NS) {
     // Check if we levelled up
     // If we did, restart the script
     if (ns.getHackingLevel() !== hackLvl) {
+      ns.print(`Levelled up, restarting...`);
       ns.spawn(FilesData['ServerPreparer'].path, { spawnDelay: 0 }, ...ns.args);
     }
     // Otherwise, loop around again
