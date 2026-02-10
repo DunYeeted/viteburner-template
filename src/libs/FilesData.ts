@@ -26,6 +26,11 @@ export const FilesData: {
     filename: `adaOS.js`,
     ramCost: 0,
   },
+  ServerBuyer: {
+    path: `../daemons/ServerBuyer.js`,
+    filename: `ServerBuyer.js`,
+    ramCost: 0,
+  },
   Batcher: {
     path: `../batch-makers/shotgun-batcher.js`,
     filename: `shotgun-batcher.js`,
