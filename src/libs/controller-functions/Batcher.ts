@@ -1,7 +1,7 @@
 import { ExpandedNS } from '../ExpandedNS';
 import { FilesData } from '../FilesData';
 import { PortErrors } from '../Ports';
-import { JobTypes } from './Enums';
+import { JobTypes, WeakenInfo } from './Constants';
 import { RamNet } from './RamNet';
 
 export abstract class Batcher {
@@ -10,9 +10,16 @@ export abstract class Batcher {
   /** @description How long each weaken will take on a server, other timings can be determined from this */
   readonly hackTime: number;
   protected readonly maxMoney: number;
+  /** The server's growth parameter */
+  readonly serverGrowth: number;
+  readonly playerGrowthMulti: number;
+  readonly bitnodeGrowthMulti: number;
   constructor(protected readonly nsx: ExpandedNS, protected readonly network: RamNet, readonly targetName: string) {
     this.hackTime = this.nsx.ns.getHackTime(this.targetName);
     this.maxMoney = this.nsx.ns.getServerMaxMoney(this.targetName);
+    this.serverGrowth = nsx.ns.getServerGrowth(targetName);
+    this.playerGrowthMulti = nsx.ns.getPlayer().mults.hacking_grow;
+    this.bitnodeGrowthMulti = 1;
   }
 
   abstract createBatchesList(): hwgwBatch[] | (gwBatch | wBatch)[] | gBatch[];
@@ -209,13 +216,8 @@ export class JobHelpers {
   }
 
   /** @description Calculates the number of threads for a given hackThread count */
-  static calcWeaken1Threads(hackThreads: number) {
-    return Math.ceil(hackThreads / 25);
-  }
-
-  /** @description Calculates the number of threads for a given growThread count */
-  static calcWeaken2Threads(growThreads: number) {
-    return Math.ceil(growThreads / 12.5);
+  static calcWeakenThreads(hackThreads: number) {
+    return Math.ceil((hackThreads * WeakenInfo.fortifyAmt) / WeakenInfo.weakenAmt);
   }
 
   /** @description Cost to run a single thread of each script */
