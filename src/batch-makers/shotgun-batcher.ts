@@ -33,8 +33,6 @@ export async function main(ns: NS) {
     nsx.scriptError(`Failed to create any batches for ${sgBatcher.targetName}`);
   }
 
-  ns.tprint(batches);
-
   const portNum = await PortHelpers.requestPort(nsx);
   sgBatcher.port = portNum;
   const hackingLvl = ns.getHackingLevel();
@@ -42,10 +40,10 @@ export async function main(ns: NS) {
   // ---Logging function---
   const hackChance = ns.hackAnalyzeChance(targetName);
   let endTime = 0;
+  const realStolen = sgBatcher.totalPercentStolen(batches) * hackChance;
   const logger = setInterval(() => {
-    const realStolen = sgBatcher.totalPercentStolen(batches) * hackChance;
     ns.clearLog();
-    ns.print(`Hacking: ${targetName}`);
+    ns.print(`Hacking ${targetName}`);
     ns.print(`Empty ram: ${ns.formatRam(sgBatcher.totalRam)}`);
     ns.print(`Stealing: $${ns.formatNumber(realStolen * sgBatcher.money)} (${ns.formatPercent(realStolen)})`);
     ns.print(`Active workers: ${sgBatcher.runningScripts.length}`);
