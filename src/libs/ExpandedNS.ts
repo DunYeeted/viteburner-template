@@ -14,13 +14,9 @@ export class ExpandedNS {
    */
   scanServers(): string[] {
     const scanList: string[] = this.ns.scan();
-    scanList.forEach((s) => {
-      scanList.push(
-        ...this.ns.scan(s).filter((s1) => {
-          !scanList.includes(s1);
-        }),
-      );
-    });
+    for (let i = 0; i < scanList.length; i++) {
+      scanList.push(...this.ns.scan(scanList[i]).filter((hostname) => !scanList.includes(hostname)));
+    }
     return scanList;
   }
 
@@ -41,7 +37,7 @@ export class ExpandedNS {
    * @remarks RAM Cost: 0.6 GB
    */
   fullRoot(): void {
-    for (const server of this.scanServers()) {
+    this.scanServers().forEach((server) => {
       switch (this.ns.getServerNumPortsRequired(server)) {
         case 5:
           try {
@@ -60,7 +56,6 @@ export class ExpandedNS {
         case 3:
           try {
             this.ns.relaysmtp(server);
-            // eslint-disable-next-line prettier/prettier
           } catch {
             return;
           }
@@ -68,7 +63,6 @@ export class ExpandedNS {
         case 2:
           try {
             this.ns.ftpcrack(server);
-            // eslint-disable-next-line prettier/prettier
           } catch {
             return;
           }
@@ -76,13 +70,12 @@ export class ExpandedNS {
         case 1:
           try {
             this.ns.brutessh(server);
-            // eslint-disable-next-line prettier/prettier
           } catch {
             return;
           }
       }
-      if (this.ns.nuke(server)) this.ns.toast(`Rooted ${server}`, `success`);
-    }
+      if (this.ns.nuke(server)) this.ns.toast(`Rooted ${server}`, `success`, 50);
+    });
   }
 
   /**
