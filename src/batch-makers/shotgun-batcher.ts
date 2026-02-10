@@ -231,5 +231,5 @@ class ShotgunBatcher extends Batcher {
 }
 
 export function autocomplete(data: AutocompleteData, _args: ScriptArg) {
-  return [...data.servers];
+  return [...data.servers, `--tail`];
 }
