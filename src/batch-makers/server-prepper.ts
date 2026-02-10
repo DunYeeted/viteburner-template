@@ -39,9 +39,9 @@ export async function main(ns: NS) {
     prospectedMoney = pBatcher.batchGrowth(batches);
     const currentMoney = Math.max(ns.getServerMoneyAvailable(targetName), 1);
     ns.clearLog();
-    ns.print(`Hacking ${targetName}`);
+    ns.print(`Prepping ${targetName}`);
     ns.print(`Empty ram: ${ns.formatRam(pBatcher.totalRam)}`);
-    ns.print(`Prep Info -
+    ns.print(`-- Prep Info --
   To:$${ns.formatNumber(prospectedMoney)}
   Change: ${ns.formatNumber(prospectedMoney - currentMoney)} (${ns.formatPercent(prospectedMoney / currentMoney)})`);
     ns.print(`Active workers: ${pBatcher.runningScripts.length}`);
