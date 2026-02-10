@@ -101,13 +101,9 @@ export abstract class Batcher {
     // For whatever reason, the port gets cleared right here
     // Not affected by the clearPort after this in server-prepper
     // or the peeks in HGW scripts
-    await this.nsx.ns.asleep(1);
-    this.nsx.ns.print(this.nsx.ns.peek(this.port));
 
     await this.nsx.ns.asleep(50);
-    this.nsx.ns.print(this.nsx.ns.peek(this.port) + `, clearing port...`);
     this.nsx.ns.clearPort(this.port);
-    this.nsx.ns.print(this.nsx.ns.peek(this.port));
   }
 
   private checkPortNum() {
