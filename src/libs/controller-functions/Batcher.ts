@@ -151,6 +151,10 @@ export abstract class Batcher {
   get totalRam(): number {
     return this.network.totalRam;
   }
+
+  get maxMon() {
+    return this.maxMoney;
+  }
 }
 
 /**

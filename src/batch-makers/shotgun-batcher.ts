@@ -210,10 +210,6 @@ class ShotgunBatcher extends Batcher {
     return this.totalPercentStolen(batches, batchNum + 1, moneyStolen);
   }
 
-  get maxMon() {
-    return this.maxMoney;
-  }
-
   private getGrowThreads(hackThreads: number) {
     return this.nsx.calculateGrowThreads(
       this.targetName,
