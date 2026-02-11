@@ -7,38 +7,38 @@ export const FilesData: {
     ramCost: 0,
   },
   HackWorker: {
-    path: `../workers/hack.js`,
+    path: `/workers/hack.js`,
     filename: `hack.js`,
     ramCost: 1.7,
   },
   GrowWorker: {
-    path: `../workers/grow.js`,
+    path: `/workers/grow.js`,
     filename: `grow.js`,
     ramCost: 1.75,
   },
   WeakenWorker: {
-    path: `../workers/weaken.js`,
+    path: `/workers/weaken.js`,
     filename: `weaken.js`,
     ramCost: 1.75,
   },
   os: {
-    path: `../daemons/adaOS.js`,
+    path: `/daemons/adaOS.js`,
     filename: `adaOS.js`,
     ramCost: 0,
   },
   ServerBuyer: {
-    path: `../daemons/ServerBuyer.js`,
+    path: `/daemons/ServerBuyer.js`,
     filename: `ServerBuyer.js`,
     ramCost: 0,
   },
   Batcher: {
-    path: `../batch-makers/shotgun-batcher.js`,
+    path: `/batch-makers/shotgun-batcher.js`,
     filename: `shotgun-batcher.js`,
     ramCost: 0,
   },
   ServerPreparer: {
-    path: `../batch-makers/server-prepper.js`,
-    filename: `server-preppers.js`,
+    path: `/batch-makers/server-prepper.js`,
+    filename: `server-prepper.js`,
     ramCost: 0,
   },
 };
