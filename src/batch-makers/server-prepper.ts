@@ -34,13 +34,13 @@ export async function main(ns: NS) {
   let prospectedMoney = 0;
   let batches: (gwBatch | wBatch)[] = [];
   const logger = setInterval(() => {
-    prospectedMoney = pBatcher.batchGrowth(nsx, batches);
+    prospectedMoney = pBatcher.batchGrowth(batches);
     const currentMoney = Math.max(ns.getServerMoneyAvailable(targetName), 1);
     ns.clearLog();
     ns.print(`Prepping ${targetName}`);
     ns.print(`Empty ram: ${ns.formatRam(pBatcher.totalRam)}`);
     ns.print(`-- Prep Info --
-  To: $${ns.formatNumber(prospectedMoney)}
+  To: $${ns.formatNumber(prospectedMoney)} / ${ns.formatNumber(pBatcher.maxMon)}
   Change: $${ns.formatNumber(prospectedMoney - currentMoney, 1)} (${ns.formatPercent(prospectedMoney / currentMoney)})`);
     ns.print(`Active workers: ${pBatcher.runningScripts.length}`);
     ns.print(`ETA: ${ns.tFormat(endTime - performance.now())}`);
@@ -67,6 +67,7 @@ export async function main(ns: NS) {
     if (ns.getHackingLevel() != pBatcher.lvl) {
       ns.print(`Levelled up, restarting...`);
       pBatcher.hackTime = ns.getHackTime(targetName);
+      await ns.asleep(0);
     }
     // Otherwise, loop around again
   }
@@ -195,36 +196,17 @@ class PreparerBatcher extends Batcher {
     this.network.reserveRam(realServer.name, JobHelpers.ThreadCosts.weaken * weakenThreads);
 
     // Keep trying until we run out of ram or until we finish the server
-    const newMoney = this.nsx.calculateServerGrowth(
-      currMoney,
-      growThreads,
-      this.minSecurity,
-      this.serverGrowth,
-      this.playerGrowthMulti,
-      this.bitnodeGrowthMulti,
-    );
+    const newMoney = this.getGrowth(currMoney, growThreads);
     return this.growServerBatches(newMoney, batches);
   }
 
-  public batchGrowth(
-    nsx: ExpandedNS,
-    batches: (gwBatch | wBatch)[],
-    batchNum = 0,
-    money: number = this.serverMoney,
-  ): number {
+  public batchGrowth(batches: (gwBatch | wBatch)[], batchNum = 0, money: number = this.serverMoney): number {
     if (batchNum == batches.length) return money;
     // Check if this is a grow batch
-    if (batches[batchNum][0].type != JobTypes.grow) return this.batchGrowth(nsx, batches, batchNum + 1, money);
+    if (batches[batchNum][0].type != JobTypes.grow) return this.batchGrowth(batches, batchNum + 1, money);
     const threads = batches[batchNum][0].threads;
-    money = nsx.calculateServerGrowth(
-      money,
-      threads,
-      this.minSecurity,
-      this.serverGrowth,
-      this.playerGrowthMulti,
-      this.bitnodeGrowthMulti,
-    );
-    return this.batchGrowth(nsx, batches, batchNum + 1, money);
+    money = this.getGrowth(money, threads);
+    return this.batchGrowth(batches, batchNum + 1, money);
   }
 
   private getGrowThreads(startingMoney: number) {
@@ -236,6 +218,17 @@ class PreparerBatcher extends Batcher {
       this.bitnodeGrowthMulti,
       startingMoney,
       this.maxMoney,
+    );
+  }
+
+  private getGrowth(startingMoney: number, threads: number): number {
+    return this.nsx.calculateServerGrowth(
+      startingMoney,
+      threads,
+      this.minSecurity,
+      this.serverGrowth,
+      this.playerGrowthMulti,
+      this.bitnodeGrowthMulti,
     );
   }
 }
