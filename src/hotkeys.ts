@@ -48,10 +48,9 @@ ${server.padEnd(20)}|${ns.hasRootAccess(server) ? ` * ` : `   `}|${SpecialServer
       ns.tprint(await nsx.tempFunction('' + ns.args[1]));
       break;
     case Hotkeys.target:
-      ns.tprint(bestTargetServer(nsx));
-      ns.tprint(
-        `Using adaOS to attack automatically does this, so only use this if you do not have enough ram for that`,
-      );
+      const bestTarget = bestTargetServer(nsx);
+      ns.tprint(bestTarget);
+      ns.run(FilesData['ServerPreparer'].path, { threads: 1 }, bestTarget);
       break;
     case Hotkeys.analyze:
       if (typeof ns.args[1] !== `string`) ns.exit();
