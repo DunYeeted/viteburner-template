@@ -1,28 +1,37 @@
+import { NetscriptPort } from '@ns';
 import { ExpandedNS } from '../ExpandedNS';
 import { FilesData } from '../FilesData';
 import { PortErrors } from '../Ports';
-import { JobTypes, WeakenInfo } from './Constants';
+import { JobTypes, Timing, WeakenInfo } from './Constants';
 import { RamNet } from './RamNet';
 
 export abstract class Batcher {
   abstract runningScripts: number[];
   port: number = PortErrors.UNDEFINED_PORT_NUM_ERROR;
   /** @description How long each weaken will take on a server, other timings can be determined from this */
-  readonly hackTime: number;
+  public hackTime: number;
   protected readonly maxMoney: number;
+  protected readonly minSecurity: number;
   /** The server's growth parameter */
   readonly serverGrowth: number;
   readonly playerGrowthMulti: number;
   readonly bitnodeGrowthMulti: number;
+
+  public lvl: number;
   constructor(protected readonly nsx: ExpandedNS, protected readonly network: RamNet, readonly targetName: string) {
     this.hackTime = this.nsx.ns.getHackTime(this.targetName);
     this.maxMoney = this.nsx.ns.getServerMaxMoney(this.targetName);
+    this.minSecurity = nsx.ns.getServerMinSecurityLevel(targetName);
+
     this.serverGrowth = nsx.ns.getServerGrowth(targetName);
-    this.playerGrowthMulti = nsx.ns.getPlayer().mults.hacking_grow;
+    const player = nsx.ns.getPlayer();
+    this.playerGrowthMulti = player.mults.hacking_grow;
     this.bitnodeGrowthMulti = 1;
+
+    this.lvl = player.skills.hacking;
   }
 
-  abstract createBatchesList(): hwgwBatch[] | (gwBatch | wBatch)[] | gBatch[];
+  abstract createBatchesList(): BatchList;
 
   /**
    * Checks if a server has the maximum amount of money and minimum security
@@ -32,9 +41,29 @@ export abstract class Batcher {
    */
   public get isPrepped() {
     return (
-      this.nsx.ns.getServerMaxMoney(this.targetName) == this.nsx.ns.getServerMoneyAvailable(this.targetName) &&
-      this.nsx.ns.getServerMinSecurityLevel(this.targetName) == this.nsx.ns.getServerSecurityLevel(this.targetName)
+      this.maxMoney == this.nsx.ns.getServerMoneyAvailable(this.targetName) &&
+      this.minSecurity == this.nsx.ns.getServerSecurityLevel(this.targetName)
     );
+  }
+
+  /**
+   * Runs all batches and then sends the start signal
+   * @param batches
+   * @returns The endTime of the first script
+   */
+  public async runAllBatches(batches: BatchList): Promise<number> {
+    // Run each batch
+    let batchNum = 0;
+    for (const batch of batches) {
+      this.runningScripts.push(...(await this.deployBatch(batch, batchNum)));
+      batchNum++;
+    }
+    await this.nsx.ns.asleep(Timing.buffer);
+    // Need to give the start signal to the queued workers
+    const endTime = performance.now() + this.weakenTime + 10;
+    await this.sendStartSignal(endTime);
+
+    return endTime;
   }
 
   /**
@@ -42,7 +71,7 @@ export abstract class Batcher {
    * @returns An array of pids for the started scripts
    * @remarks The exec'd scripts still need to be sent a start signal
    * */
-  public async deployBatch(batch: gBatch | wBatch | gwBatch | hwgwBatch, batchNum: number): Promise<number[]> {
+  private async deployBatch(batch: Batch, batchNum: number): Promise<number[]> {
     this.checkPortNum();
     return batch.map((job, jobNum) => {
       return this.runJob(
@@ -53,11 +82,7 @@ export abstract class Batcher {
           target: this.targetName,
 
           workTime:
-            job.type == JobTypes.hack
-              ? this.hackTime
-              : job.type == JobTypes.grow
-              ? this.hackTime * 3.2
-              : this.hackTime * 4,
+            job.type == JobTypes.hack ? this.hackTime : job.type == JobTypes.grow ? this.growTime : this.weakenTime,
 
           portNum: this.port,
           batchNum: batchNum,
@@ -73,26 +98,15 @@ export abstract class Batcher {
    * @param job Job to run
    * @returns pid of the script
    */
-  protected runJob(job: IWorker, threadCount: number): number {
+  private runJob(job: IWorker, threadCount: number): number {
     const script =
       job.type == JobTypes.hack
         ? JobHelpers.Paths.hack
         : job.type == JobTypes.grow
         ? JobHelpers.Paths.grow
         : JobHelpers.Paths.weaken;
-    const ramCost =
-      threadCount * job.type == JobTypes.hack
-        ? JobHelpers.ThreadCosts.hack
-        : job.type == JobTypes.grow
-        ? JobHelpers.ThreadCosts.grow
-        : JobHelpers.ThreadCosts.weaken;
 
-    return this.nsx.ns.exec(
-      script,
-      job.hostServer,
-      { threads: threadCount, temporary: true, ramOverride: ramCost },
-      JSON.stringify(job),
-    );
+    return this.nsx.ns.exec(script, job.hostServer, { threads: threadCount, temporary: true }, JSON.stringify(job));
   }
 
   /**
@@ -111,6 +125,14 @@ export abstract class Batcher {
 
     await this.nsx.ns.asleep(50);
     this.nsx.ns.clearPort(this.port);
+  }
+
+  public async waitForFinish(port: NetscriptPort) {
+    do {
+      if (port.empty()) await port.nextWrite();
+      this.runningScripts.splice(this.runningScripts.indexOf(port.read()), 1);
+    } while (this.runningScripts.length > 0);
+    return;
   }
 
   private checkPortNum() {
@@ -158,6 +180,9 @@ export type gwBatch = [IJob, IJob];
  * Types in order: ['hack', 'weaken1', 'grow', 'weaken2']
  */
 export type hwgwBatch = [IJob, IJob, IJob, IJob];
+
+export type Batch = gBatch | (wBatch | gwBatch) | hwgwBatch;
+export type BatchList = gBatch[] | (wBatch | gwBatch)[] | hwgwBatch[];
 
 /** @description Holds the necessary for running the script in servers */
 export interface IJob {
@@ -216,8 +241,9 @@ export class JobHelpers {
   }
 
   /** @description Calculates the number of threads for a given hackThread count */
-  static calcWeakenThreads(hackThreads: number) {
-    return Math.ceil((hackThreads * WeakenInfo.fortifyAmt) / WeakenInfo.weakenAmt);
+  static calcWeakenThreads(type: JobTypes, threads: number) {
+    const typeMult = type == JobTypes.hack ? 1 : 2;
+    return (threads * WeakenInfo.fortifyAmt * typeMult) / WeakenInfo.weakenAmt;
   }
 
   /** @description Cost to run a single thread of each script */
@@ -237,14 +263,14 @@ export class JobHelpers {
 
 export class BatchHelpers {
   /** Unreserves the ram for this batch on ramnet */
-  static reserveBatch(network: RamNet, batch: gBatch | wBatch | gwBatch | hwgwBatch): void {
+  static reserveBatch(network: RamNet, batch: Batch): void {
     for (const job of batch) {
       network.reserveRam(job.hostServer, JobHelpers.calculateJobCost(job));
     }
   }
 
   /** Reserves the ram for this batch on ramnet */
-  static unreserveBatch(network: RamNet, batch: gBatch | wBatch | gwBatch | hwgwBatch): void {
+  static unreserveBatch(network: RamNet, batch: Batch): void {
     for (const job of batch) {
       network.unreserveRam(job.hostServer, JobHelpers.calculateJobCost(job));
     }

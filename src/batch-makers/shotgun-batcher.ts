@@ -1,8 +1,7 @@
 import { Batcher, BatchHelpers, hwgwBatch, JobHelpers, IJob } from '@/libs/controller-functions/Batcher';
-import { JobTypes, Timing } from '@/libs/controller-functions/Constants';
+import { JobTypes } from '@/libs/controller-functions/Constants';
 import { RamNet } from '@/libs/controller-functions/RamNet';
 import { ExpandedNS } from '@/libs/ExpandedNS';
-import { FilesData } from '@/libs/FilesData';
 import { PortHelpers } from '@/libs/Ports';
 import { AutocompleteData, NS, ScriptArg } from '@ns';
 
@@ -26,7 +25,7 @@ export async function main(ns: NS) {
   ns.enableLog(`print`);
   const targetName: string = ns.args[0];
   const sgBatcher = new ShotgunBatcher(nsx, new RamNet(nsx), targetName);
-  const batches = sgBatcher.createBatchesList();
+  let batches = sgBatcher.createBatchesList();
 
   // Now that we're done, check if we made any batches
   if (batches.length == 0) {
@@ -35,7 +34,6 @@ export async function main(ns: NS) {
 
   const portNum = await PortHelpers.requestPort(nsx);
   sgBatcher.port = portNum;
-  const hackingLvl = ns.getHackingLevel();
 
   // ---Logging function---
   const hackChance = ns.hackAnalyzeChance(targetName);
@@ -45,7 +43,7 @@ export async function main(ns: NS) {
     ns.clearLog();
     ns.print(`Hacking ${targetName}`);
     ns.print(`Empty ram: ${ns.formatRam(sgBatcher.totalRam)}`);
-    ns.print(`Stealing: $${ns.formatNumber(realStolen * sgBatcher.money)} (${ns.formatPercent(realStolen)})`);
+    ns.print(`Stealing: $${ns.formatNumber(realStolen * sgBatcher.maxMon)} (${ns.formatPercent(realStolen)})`);
     ns.print(`Active workers: ${sgBatcher.runningScripts.length}`);
     ns.print(`ETA: ${ns.tFormat(endTime - performance.now())}`);
   }, 1000);
@@ -59,27 +57,17 @@ export async function main(ns: NS) {
   const port = ns.getPortHandle(portNum);
 
   while (sgBatcher.isPrepped) {
-    // Run each batch
-    for (let i = 0; i < batches.length; i++) {
-      sgBatcher.runningScripts.push(...(await sgBatcher.deployBatch(batches[i], i)));
-    }
-    await ns.asleep(Timing.buffer);
-    // Need to give the start signal to the queued workers
-    endTime = performance.now() + sgBatcher.weakenTime + 10;
-    await sgBatcher.sendStartSignal(endTime);
-
+    // Run batchList
+    endTime = await sgBatcher.runAllBatches(batches);
     // Wait for the scripts to finish
-    do {
-      await port.nextWrite();
-      if (!port.empty()) sgBatcher.runningScripts.splice(sgBatcher.runningScripts.indexOf(port.read()), 1);
-    } while (sgBatcher.runningScripts.length > 0);
-
+    await sgBatcher.waitForFinish(port);
     // Finished this run through
     // Check if we levelled up
     // If we did, restart the script
-    if (ns.getHackingLevel() !== hackingLvl) {
+    if (ns.getHackingLevel() != sgBatcher.lvl) {
       ns.print(`Levelled up, restarting...`);
-      ns.spawn(FilesData['Batcher'].path, { spawnDelay: 0 }, ...ns.args);
+      batches = sgBatcher.createBatchesList();
+      sgBatcher.hackTime = ns.getHackTime(targetName);
     }
     // Otherwise, loop around again
   }
@@ -138,16 +126,7 @@ class ShotgunBatcher extends Batcher {
       1,
     );
     const hackCost = hackThreads * JobHelpers.ThreadCosts.hack;
-    const growThreads = Math.ceil(
-      this.nsx.calculateGrowThreads(
-        this.targetName,
-        this.serverGrowth,
-        this.playerGrowthMulti,
-        this.bitnodeGrowthMulti,
-        this.maxMoney * (1 - this.percentSingleThread * hackThreads),
-        this.maxMoney,
-      ),
-    );
+    const growThreads = Math.ceil(this.getGrowThreads(hackThreads));
     const growCost = growThreads * JobHelpers.ThreadCosts.grow;
 
     let hackServer: string | undefined;
@@ -174,9 +153,9 @@ class ShotgunBatcher extends Batcher {
 
     // Also check if we can find servers to host the weakens
     // Technically, we should do the same thing as above, but it probably doesn't make a big difference so who cares
-    const weaken1Threads = JobHelpers.calcWeakenThreads(hackThreads);
+    const weaken1Threads = Math.ceil(JobHelpers.calcWeakenThreads(JobTypes.hack, hackThreads));
     const weaken1Cost = weaken1Threads * JobHelpers.ThreadCosts.weaken;
-    const weaken2Threads = JobHelpers.calcWeakenThreads(growThreads);
+    const weaken2Threads = Math.ceil(JobHelpers.calcWeakenThreads(JobTypes.grow, growThreads));
     const weaken2Cost = weaken2Threads * JobHelpers.ThreadCosts.weaken;
 
     const weaken1Server = this.network.findSuitableServer(weaken1Cost);
@@ -231,8 +210,20 @@ class ShotgunBatcher extends Batcher {
     return this.totalPercentStolen(batches, batchNum + 1, moneyStolen);
   }
 
-  get money() {
+  get maxMon() {
     return this.maxMoney;
+  }
+
+  private getGrowThreads(hackThreads: number) {
+    return this.nsx.calculateGrowThreads(
+      this.targetName,
+      this.minSecurity,
+      this.serverGrowth,
+      this.playerGrowthMulti,
+      this.bitnodeGrowthMulti,
+      this.maxMoney * (1 - this.percentSingleThread * hackThreads),
+      this.maxMoney,
+    );
   }
 }
 

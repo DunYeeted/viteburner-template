@@ -1,10 +1,10 @@
 import { AutocompleteData, NS, ScriptArg } from '@ns';
 import { ExpandedNS } from '@/libs/ExpandedNS';
-import { FilesData } from '@/libs/FilesData';
 import { PortHelpers } from '@/libs/Ports';
 import { JobHelpers, gwBatch, wBatch, Batcher } from '@/libs/controller-functions/Batcher';
-import { JobTypes, Timing, WeakenInfo } from '@/libs/controller-functions/Constants';
+import { JobTypes, WeakenInfo } from '@/libs/controller-functions/Constants';
 import { RamNet } from '@/libs/controller-functions/RamNet';
+import { FilesData } from '@/libs/FilesData';
 
 export async function main(ns: NS) {
   const nsx = new ExpandedNS(ns);
@@ -28,7 +28,6 @@ export async function main(ns: NS) {
 
   const portNum = await PortHelpers.requestPort(nsx);
   pBatcher.port = portNum;
-  const hackLvl = ns.getHackingLevel();
 
   // ---Logging function---
   let endTime = 0;
@@ -57,32 +56,23 @@ export async function main(ns: NS) {
   while (!pBatcher.isPrepped) {
     batches = pBatcher.createBatchesList();
     // Run each batch
-    for (let i = 0; i < batches.length; i++) {
-      pBatcher.runningScripts.push(...(await pBatcher.deployBatch(batches[i], i)));
-    }
-    await ns.asleep(Timing.buffer);
-    // Need to give the start signal to the queued workers
-    endTime = performance.now() + pBatcher.weakenTime + 10;
-    await pBatcher.sendStartSignal(endTime);
+    endTime = await pBatcher.runAllBatches(batches);
 
     // Wait for the scripts to finish
-    do {
-      // ns.tprint(`Waiting...`);
-      await port.nextWrite();
-      if (!port.empty()) pBatcher.runningScripts.splice(pBatcher.runningScripts.indexOf(port.read()), 1);
-    } while (pBatcher.runningScripts.length > 0);
+    await pBatcher.waitForFinish(port);
 
     // Finished this run through
     // Check if we levelled up
     // If we did, restart the script
-    if (ns.getHackingLevel() !== hackLvl) {
+    if (ns.getHackingLevel() != pBatcher.lvl) {
       ns.print(`Levelled up, restarting...`);
-      ns.spawn(FilesData['ServerPreparer'].path, { spawnDelay: 0 }, ...ns.args);
+      pBatcher.hackTime = ns.getHackTime(targetName);
     }
     // Otherwise, loop around again
   }
 
-  ns.toast(`${targetName} is now prepped!`, `success`);
+  ns.toast(`${targetName} is now prepped! Running attack`, `success`);
+  ns.run(FilesData[`Batcher`].path, { threads: 1 }, targetName);
 }
 
 class PreparerBatcher extends Batcher {
@@ -116,11 +106,11 @@ class PreparerBatcher extends Batcher {
 
     // Next check if we can weaken the server down to it's min
     // Each weaken thread removes 0.05 security
-    const idealThreads = Math.ceil((currSec - this.serverMinSec) / 0.05);
+    const idealThreads = Math.ceil((currSec - this.serverMinSec) / WeakenInfo.weakenAmt);
     const idealCost = idealThreads * JobHelpers.ThreadCosts.weaken;
     // If we could, then create the job and return
     if (idealCost <= largestServer.ram) {
-      const server = this.network.findSuitableServer(idealCost) as string;
+      const server = <string>this.network.findSuitableServer(idealCost);
       this.network.reserveRam(server, idealCost);
       batches.push([{ type: JobTypes.weaken1, hostServer: server, threads: idealThreads }]);
       return batches;
@@ -140,20 +130,12 @@ class PreparerBatcher extends Batcher {
     if (this.network.largestServer.ram < JobHelpers.ThreadCosts.grow + JobHelpers.ThreadCosts.weaken) return batches;
 
     // Otherwise, check if we can get to the max in a single batch
-    const idealGrowThreads = Math.ceil(
-      this.nsx.calculateGrowThreads(
-        this.targetName,
-        this.serverGrowth,
-        this.playerGrowthMulti,
-        this.bitnodeGrowthMulti,
-        this.maxMoney,
-      ),
-    );
+    const idealGrowThreads = Math.ceil(this.getGrowThreads(currMoney));
     const idealGrowCost = idealGrowThreads * JobHelpers.ThreadCosts.grow;
     const idealGrowServer = this.network.findSuitableServer(idealGrowCost);
     this.network.reserveRam(idealGrowServer, idealGrowCost);
 
-    const idealWeakenThreads = JobHelpers.calcWeakenThreads(idealGrowThreads);
+    const idealWeakenThreads = Math.ceil(JobHelpers.calcWeakenThreads(JobTypes.grow, idealGrowThreads));
     const idealWeakenCost = idealWeakenThreads * JobHelpers.ThreadCosts.weaken;
     const idealWeakenServer = this.network.findSuitableServer(idealWeakenCost);
     // If we were able to finish growing the server then return early
@@ -216,6 +198,7 @@ class PreparerBatcher extends Batcher {
     const newMoney = this.nsx.calculateServerGrowth(
       currMoney,
       growThreads,
+      this.minSecurity,
       this.serverGrowth,
       this.playerGrowthMulti,
       this.bitnodeGrowthMulti,
@@ -236,11 +219,24 @@ class PreparerBatcher extends Batcher {
     money = nsx.calculateServerGrowth(
       money,
       threads,
+      this.minSecurity,
       this.serverGrowth,
       this.playerGrowthMulti,
       this.bitnodeGrowthMulti,
     );
     return this.batchGrowth(nsx, batches, batchNum + 1, money);
+  }
+
+  private getGrowThreads(startingMoney: number) {
+    return this.nsx.calculateGrowThreads(
+      this.targetName,
+      this.minSecurity,
+      this.serverGrowth,
+      this.playerGrowthMulti,
+      this.bitnodeGrowthMulti,
+      startingMoney,
+      this.maxMoney,
+    );
   }
 }
 
