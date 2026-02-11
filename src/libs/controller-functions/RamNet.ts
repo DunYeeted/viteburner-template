@@ -64,15 +64,6 @@ export class RamNet {
    * Adds ram to a server, used to undo the effect of reserveRam
    */
   public unreserveRam(server: string | undefined, ram: number): void {
-    // if (server == undefined) return;
-
-    // const s = this.network.find((serv) => {
-    //   return serv.name === server;
-    // });
-
-    // if (s == undefined) throw new Error(`${server} not defined on network!`);
-
-    // s.ram += ram;
     this.reserveRam(server, -1 * ram);
 
     this.sortNetwork();
