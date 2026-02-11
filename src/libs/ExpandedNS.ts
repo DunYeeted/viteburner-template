@@ -122,13 +122,14 @@ export class ExpandedNS {
    */
   calculateGrowThreads(
     server: string,
+    securityLevel: number,
     growth: number = this.ns.getServerGrowth(server),
     playerGrowMulti = this.ns.getPlayer().mults.hacking_grow,
     bitnodeGrowthRate = BITNODE_GROWTH_MULTIPLIER,
     startMoney: number = this.ns.getServerMoneyAvailable(server),
     targetMoney: number = this.ns.getServerMaxMoney(server),
   ) {
-    const growthLog = this.calculateGrowthLog(1, growth, playerGrowMulti, bitnodeGrowthRate);
+    const growthLog = this.calculateGrowthLog(1, growth, securityLevel, playerGrowMulti, bitnodeGrowthRate);
     // Initial guess for the number of threads since we're doing a newtonian approximation and need one
     let threads = (targetMoney - startMoney) / (1 + (targetMoney * (1 / 16) + startMoney * (15 / 16)) * growthLog);
     let diff = -1;
@@ -159,18 +160,22 @@ export class ExpandedNS {
   calculateGrowthLog(
     threads: number,
     growthRate: number,
+    securityLevel: number,
     playerGrowMulti = this.ns.getPlayer().mults.hacking_grow,
     bitnodeGrowthRate = BITNODE_GROWTH_MULTIPLIER,
+    cores = 1,
   ) {
     if (threads < 1) return -Infinity;
 
-    const trueGrowthPercentage = (growthRate / 100) * bitnodeGrowthRate;
+    const growthLog = Math.min(Math.log1p(0.03 / securityLevel), 0.00349388925425578);
 
-    // Could implement the core bonus here
+    const realGrowthRate = (growthRate / 100) * bitnodeGrowthRate;
 
-    // 0.00349388925425578 is the growthLog, which is calculated in the actual function
-    // Since we're assuming the server is already prepped though, this is the max it can go to
-    return 0.00349388925425578 * trueGrowthPercentage * playerGrowMulti * threads;
+    return growthLog * realGrowthRate * playerGrowMulti * this.calculateCoreBonus(cores) * threads;
+  }
+
+  calculateCoreBonus(coresAmt: number) {
+    return 1 + (coresAmt - 1) / 16;
   }
 
   /**
@@ -186,10 +191,13 @@ export class ExpandedNS {
     currMoney: number,
     threads: number,
     growthRate: number,
+    securityLevel: number,
     playerGrowMulti = this.ns.getPlayer().mults.hacking_grow,
     bitnodeGrowthRate = BITNODE_GROWTH_MULTIPLIER,
   ): number {
-    const multiplier = Math.exp(this.calculateGrowthLog(threads, growthRate, playerGrowMulti, bitnodeGrowthRate));
+    const multiplier = Math.exp(
+      this.calculateGrowthLog(threads, growthRate, securityLevel, playerGrowMulti, bitnodeGrowthRate),
+    );
 
     let money = currMoney;
     money += threads;
