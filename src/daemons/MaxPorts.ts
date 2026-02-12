@@ -1,6 +1,6 @@
 import { ExpandedNS } from '@/libs/ExpandedNS';
 import { ReservedPorts, PortRequest, RequestTypes, PortErrors, FulfilledPortRequest } from '@/libs/Ports';
-import { NS } from '@ns';
+import { NetscriptPort, NS } from '@ns';
 
 export async function main(ns: NS) {
   const nsx = new PortNSX(ns);
@@ -18,12 +18,6 @@ max-ports.js`);
     nsx.clearServers(true);
   });
 
-  const retiredPorts: number[] = [];
-  const namedPorts = new Map<string, number>();
-
-  ns.clearPort(ReservedPorts.REQUEST_PORT);
-  ns.clearPort(ReservedPorts.FULFILLED_REQUESTS_PORT);
-
   // Print the logo
   nsx.ns.tprint(`
  _____ ______   ________     ___    ___             ________  ________  ________  _________  ________      
@@ -36,73 +30,93 @@ max-ports.js`);
                             |__|/ \\|__|                                                        \\|_________|
 Weaving scripts to their destination™`);
 
-  let nextFreePort = ReservedPorts.FULFILLED_REQUESTS_PORT + 1;
-
   const requestPort = ns.getPortHandle(ReservedPorts.REQUEST_PORT);
 
   while (true) {
     // If the port has something, read it immediately. If it is empty, wait until something needs our attention
     if (requestPort.empty()) await requestPort.nextWrite();
-
     const request: PortRequest = JSON.parse(requestPort.read());
 
-    let port: number;
-
     switch (request.type) {
-      // --- REQUESTING ---
       case RequestTypes.requesting:
-        // Somebody already has this portname
-        if (request.portName !== null && namedPorts.has(request.portName)) {
-          nsx.givePort({ scriptID: request.identifier, portNum: PortErrors.DUPLICATE_NAME_ERROR });
-          break;
-        }
-
-        if (retiredPorts.length > 0) {
-          port = retiredPorts.shift() as number;
-        } else {
-          port = nextFreePort;
-          nextFreePort++;
-        }
-        nsx.givePort({ scriptID: request.identifier, portNum: port });
-        if (request.portName !== null) namedPorts.set(request.portName, port);
+        nsx.handlePortRequest(request);
         break;
-
-      // --- SEARCHING ---
       case RequestTypes.searching:
-        // Did not specify a name despite asking for one
-        if (request.portName === null) {
-          nsx.givePort({ scriptID: request.identifier, portNum: PortErrors.MALFORMED_PORT_SEARCH_ERROR });
-          break;
-        }
-        // eslint-disable-next-line no-case-declarations
-        const namedPortNum = namedPorts.get(request.portName);
-        // Port has not yet been requested/named
-        if (namedPortNum === undefined) {
-          nsx.givePort({ scriptID: request.identifier, portNum: PortErrors.UNDEFINED_NAME_ERROR });
-          break;
-        }
-        // Found the correct port
-        nsx.givePort({ scriptID: request.identifier, portNum: namedPortNum });
+        nsx.handlePortSearch(request);
         break;
-
-      // --- RETIRING ---
       case RequestTypes.retiring:
-        // Delete the namedPort if necessary
-        if (request.portName !== null && !namedPorts.delete(request.portName)) {
-          // If this namedPort never existed, it's concerning but since it is about to be retired there's no need to throw an error
-          ns.toast(`Tried to delete ${request.portName}, but it does not exist!`, `warning`);
-        }
-        retiredPorts.push(request.identifier);
-        ns.clearPort(request.identifier);
+        nsx.handlePortRetire(request);
         break;
     }
   }
 }
 
 class PortNSX extends ExpandedNS {
+  retiredPorts: number[] = [];
+  namedPorts = new Map<string, number>();
+  private requestPort: NetscriptPort;
+  private fulfillPort: NetscriptPort;
+  private nextFreePort = ReservedPorts.FULFILLED_REQUESTS_PORT + 1;
+
+  constructor(nsContext: NS) {
+    super(nsContext);
+
+    this.requestPort = this.ns.getPortHandle(ReservedPorts.REQUEST_PORT);
+    this.requestPort.clear();
+    this.fulfillPort = this.ns.getPortHandle(ReservedPorts.FULFILLED_REQUESTS_PORT);
+    this.fulfillPort.clear();
+  }
+
   /** @description Sends a port to a script that requested one */
-  givePort(data: FulfilledPortRequest): void {
+  private givePort(data: FulfilledPortRequest): void {
     this.ns.print(`Giving port ${data.portNum} to script ${data.scriptID}`);
     this.ns.writePort(ReservedPorts.FULFILLED_REQUESTS_PORT, JSON.stringify(data));
+  }
+
+  public handlePortRetire(request: PortRequest) {
+    // Delete the namedPort if necessary
+    if (request.portName !== null && !this.namedPorts.delete(request.portName)) {
+      // If this namedPort never existed, it's concerning but since it is about to be retired there's no need to throw an error
+      this.ns.toast(`Tried to delete ${request.portName}, but it does not exist!`, `warning`);
+    }
+    this.retiredPorts.push(request.identifier);
+    this.ns.clearPort(request.identifier);
+  }
+
+  public handlePortSearch(request: PortRequest) {
+    // Did not specify a name despite asking for one
+    if (request.portName === null) {
+      this.givePort({ scriptID: request.identifier, portNum: PortErrors.MALFORMED_PORT_SEARCH_ERROR });
+      return;
+    }
+    const namedPortNum = this.namedPorts.get(request.portName);
+    // Port has not yet been requested/named
+    if (namedPortNum === undefined) {
+      this.givePort({ scriptID: request.identifier, portNum: PortErrors.UNDEFINED_NAME_ERROR });
+      return;
+    }
+    // Found the correct port
+    this.givePort({ scriptID: request.identifier, portNum: namedPortNum });
+  }
+
+  public handlePortRequest(request: PortRequest) {
+    // Somebody already has this portname
+    if (request.portName !== null && this.namedPorts.has(request.portName)) {
+      this.givePort({ scriptID: request.identifier, portNum: PortErrors.DUPLICATE_NAME_ERROR });
+      return;
+    }
+
+    let port = this.nextFreePort;
+    if (this.retiredPorts.length > 0) {
+      port = <number>this.retiredPorts.shift();
+    } else {
+      this.nextFreePort++;
+    }
+    this.givePort({ scriptID: request.identifier, portNum: port });
+    if (request.portName !== null) this.namedPorts.set(request.portName, port);
+  }
+
+  public get nextPort(): number {
+    return this.nextFreePort;
   }
 }
