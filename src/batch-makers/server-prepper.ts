@@ -81,7 +81,7 @@ class PreparerBatcher extends Batcher {
   runningScripts: number[] = [];
   readonly serverMinSec: number;
   /** The amount of money currently on the server */
-  readonly serverMoney: number;
+  serverMoney: number;
 
   constructor(nsx: ExpandedNS, network: RamNet, targetName: string) {
     super(nsx, network, targetName);
@@ -91,6 +91,7 @@ class PreparerBatcher extends Batcher {
 
   public createBatchesList(): (gwBatch | wBatch)[] {
     const serverCurrSec = this.nsx.ns.getServerSecurityLevel(this.targetName);
+    this.serverMoney = this.nsx.ns.getServerMoneyAvailable(this.targetName);
     const batches: (gwBatch | wBatch)[] = [];
 
     if (serverCurrSec > this.serverMinSec) {
