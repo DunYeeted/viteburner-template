@@ -13,7 +13,7 @@ export function autocomplete(data: AutocompleteData, args: ScriptArg[]) {
     Hotkeys.target,
     Hotkeys.temporaryCommand,
     Hotkeys.analyze,
-    Hotkeys.connect,
+    Hotkeys.cnct,
     Hotkeys.buyer,
     StateBasedHotkeys.attack,
   ];
@@ -45,12 +45,13 @@ ${server.padEnd(20)}|${ns.hasRootAccess(server) ? ` * ` : `   `}|${SpecialServer
       ns.tprint(output);
       break;
     case Hotkeys.temporaryCommand:
-      ns.tprint(await nsx.tempFunction('' + ns.args[1]));
+      ns.tprint(await nsx.tempFunction(<string>ns.args[1]));
       break;
     case Hotkeys.target:
       const bestTarget = bestTargetServer(nsx);
       ns.tprint(bestTarget);
-      ns.run(FilesData['ServerPreparer'].path, { threads: 1 }, bestTarget);
+      const prepPid = ns.run(FilesData['ServerPreparer'].path, { threads: 1 }, bestTarget);
+      ns.tprint(`tail ${prepPid}`);
       break;
     case Hotkeys.analyze:
       if (typeof ns.args[1] !== `string`) ns.exit();
@@ -63,15 +64,15 @@ Root access: ${server.hasAdminRights ? `YES` : `NO`}
 RAM: ${ns.formatRam(server.ramUsed)} Used / ${ns.formatRam(server.maxRam)} total
 Bought: ${server.purchasedByPlayer ? `YES` : `NO`}
 Hacking info:
-  Level: ${server.hackDifficulty}
+  Level: ${server.requiredHackingSkill}
   Money: $${ns.formatNumber(server.moneyAvailable ?? 0)} / $${ns.formatNumber(server.moneyMax ?? 0)}
-  Security: ${server.hackDifficulty} / ${server.minDifficulty}
+  Security: ${ns.formatNumber(server.hackDifficulty ?? 0)} / ${ns.formatNumber(server.minDifficulty ?? 0)}
 `);
       break;
     case Hotkeys.buyer:
       ns.run(FilesData['ServerBuyer'].path, { threads: 1 }, ns.args[1]);
       break;
-    case Hotkeys.connect:
+    case Hotkeys.cnct:
       const tree = serversTree(ns);
       let recentServer: string = <string>ns.args[1];
       const order = [recentServer];
@@ -117,5 +118,5 @@ enum Hotkeys {
   target = `bestTarget`,
   analyze = `analyze`,
   buyer = `buyer`,
-  connect = `shortestPath`,
+  cnct = `shortestPath`,
 }
