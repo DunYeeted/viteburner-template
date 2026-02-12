@@ -140,6 +140,8 @@ export abstract class Batcher {
       if (port.empty()) await port.nextWrite();
       this.runningScripts.splice(this.runningScripts.indexOf(port.read()), 1);
     } while (this.runningScripts.length > 0);
+
+    this.runningScripts = [];
     return;
   }
 
