@@ -66,6 +66,7 @@ export async function main(ns: NS) {
     // If we did, restart the script
     if (ns.getHackingLevel() != sgBatcher.lvl) {
       ns.print(`Levelled up, restarting...`);
+      sgBatcher.resetNetwork();
       batches = sgBatcher.createBatchesList();
       sgBatcher.hackTime = ns.getHackTime(targetName);
     }

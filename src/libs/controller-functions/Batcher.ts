@@ -6,7 +6,6 @@ import { JobTypes, Timing, WeakenInfo } from './Constants';
 import { RamNet } from './RamNet';
 
 export abstract class Batcher {
-  abstract runningScripts: number[];
   port: number = PortErrors.UNDEFINED_PORT_NUM_ERROR;
   /** @description How long each weaken will take on a server, other timings can be determined from this */
   public hackTime: number;
@@ -18,7 +17,12 @@ export abstract class Batcher {
   readonly bitnodeGrowthMulti: number;
 
   public lvl: number;
-  constructor(protected readonly nsx: ExpandedNS, protected readonly network: RamNet, readonly targetName: string) {
+  constructor(
+    protected readonly nsx: ExpandedNS,
+    protected network: RamNet,
+    readonly targetName: string,
+    public runningScripts: number[] = [],
+  ) {
     this.hackTime = this.nsx.ns.getHackTime(this.targetName);
     this.maxMoney = this.nsx.ns.getServerMaxMoney(this.targetName);
     this.minSecurity = nsx.ns.getServerMinSecurityLevel(targetName);
@@ -44,6 +48,10 @@ export abstract class Batcher {
       this.maxMoney == this.nsx.ns.getServerMoneyAvailable(this.targetName) &&
       this.minSecurity == this.nsx.ns.getServerSecurityLevel(this.targetName)
     );
+  }
+
+  public resetNetwork() {
+    this.network = new RamNet(this.nsx);
   }
 
   /**
