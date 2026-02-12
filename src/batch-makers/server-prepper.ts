@@ -81,7 +81,7 @@ class PreparerBatcher extends Batcher {
   runningScripts: number[] = [];
   readonly serverMinSec: number;
   /** The amount of money currently on the server */
-  serverMoney: number;
+  private serverMoney: number;
 
   constructor(nsx: ExpandedNS, network: RamNet, targetName: string) {
     super(nsx, network, targetName);
