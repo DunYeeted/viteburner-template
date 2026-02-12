@@ -15,7 +15,7 @@ export class ExpandedNS {
    * @remarks RAM Cost: 0.2 GB
    */
   scanServers(): string[] {
-    const scanList: string[] = this.ns.scan();
+    const scanList: string[] = [`home`];
     for (let i = 0; i < scanList.length; i++) {
       scanList.push(...this.ns.scan(scanList[i]).filter((hostname) => !scanList.includes(hostname)));
     }
@@ -99,13 +99,13 @@ export class ExpandedNS {
     this.ns.write(
       `temp/${this.ns.pid}.js`,
       `export async function main(ns) {
-  ns.write('temp/${this.ns.pid}.txt', JSON.stringify(${func}), 'w'
+  ns.write('temp/${this.ns.pid}.txt', JSON.stringify(${func}), 'w');
 }`,
       'w',
     );
     await this.ns.asleep(0);
     this.ns.run(`temp/${this.ns.pid}.js`);
-    const data = JSON.parse(this.ns.read(`temp/${this.ns.pid}.txt`));
+    const data = JSON.parse('{' + this.ns.read(`temp/${this.ns.pid}.txt`) + '}');
     this.ns.rm(`temp/${this.ns.pid}.txt`);
     return data;
   }
@@ -190,8 +190,8 @@ export class ExpandedNS {
   calculateServerGrowth(
     currMoney: number,
     threads: number,
-    growthRate: number,
     securityLevel: number,
+    growthRate: number,
     playerGrowMulti = this.ns.getPlayer().mults.hacking_grow,
     bitnodeGrowthRate = BITNODE_GROWTH_MULTIPLIER,
   ): number {
