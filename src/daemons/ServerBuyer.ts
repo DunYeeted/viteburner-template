@@ -10,6 +10,11 @@ const ATTEMPT_PERIOD = 1000;
 export async function main(ns: NS) {
   const nsx = new ExpandedNS(ns);
 
+  if (ns.args.length == 0 || !Number.isInteger(ns.args[0])) {
+    ns.alert(buyInfo(ns));
+    return;
+  }
+
   if (typeof ns.args[0] !== `number` || !Number.isInteger(Math.log2(ns.args[0]))) {
     ns.tprint(`Incorrect usage!:
   ./daemons/ServerBuyer <number>
@@ -43,4 +48,19 @@ export async function main(ns: NS) {
   }
 
   ns.toast(`Finished buying ${maxServers} servers with ${ns.formatRam(wishRam)} each`);
+}
+
+function buyInfo(ns: NS) {
+  let info = ``;
+  for (let i = 1; i <= 20; i++) {
+    const ram = Math.pow(2, i);
+    info += `\n`;
+    info += ns.formatRam(ram).padEnd(10, i % 2 == 0 ? `-` : `.`);
+    info += `$${ns.formatNumber(ns.getPurchasedServerCost(ram))}`;
+  }
+
+  info += `\n\n`;
+  info += `Currently owned: ${ns.getPurchasedServers().length}`;
+
+  return info;
 }
