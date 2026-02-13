@@ -3,7 +3,6 @@ import { ExpandedNS } from './libs/ExpandedNS';
 import { bestTargetServer, StateBasedHotkeys } from './daemons/adaOS';
 import { PortHelpers } from './libs/Ports';
 import { PossibleRamAmts, SpecialServers } from './libs/Constants';
-import { FilesData } from './libs/FilesData';
 
 export function autocomplete(data: AutocompleteData, args: ScriptArg[]) {
   const baseArgs = [
@@ -44,10 +43,10 @@ export async function main(ns: NS) {
       break;
     case Hotkeys.analyze:
       if (typeof ns.args[1] !== `string`) ns.exit();
-      analyzeServer(ns, ns.args[1]);
+      ns.tprint(analyzeServer(ns, ns.args[1]));
       break;
     case Hotkeys.buyer:
-      ns.run(FilesData['ServerBuyer'].path, { threads: 1 }, ns.args[1]);
+      ns.run(`./daemons/ServerBuyer.js`, { threads: 1 }, ns.args[1] ?? ``);
       break;
     case Hotkeys.cnct:
       if (typeof ns.args[1] !== `string`) ns.exit();
@@ -62,11 +61,11 @@ export async function main(ns: NS) {
 function prettyScan(nsx: ExpandedNS) {
   let output = '';
   nsx.scanServers().forEach((server) => {
-    output += `${server.padEnd(20)}|${nsx.ns.hasRootAccess(server) ? ` * ` : `   `}`;
+    output += `\n`;
+    output += `${server.padEnd(20)}|${nsx.ns.hasRootAccess(server) ? ` * ` : `   `}|`;
     const isSpecialServer = SpecialServers.includes(server);
     const canHack = nsx.ns.getServerRequiredHackingLevel(server) <= nsx.ns.getHackingLevel();
-    output += `${!canHack ? `   ` : isSpecialServer ? ` @ ` : ` # `}`;
-    output += `\n`;
+    output += `${!canHack ? `   ` : isSpecialServer ? ` @ ` : ` ~ `}`;
   });
 
   return output;
@@ -75,7 +74,7 @@ function prettyScan(nsx: ExpandedNS) {
 function findAndAttack(nsx: ExpandedNS) {
   const bestTarget = bestTargetServer(nsx);
   nsx.ns.tprint(bestTarget);
-  const prepPid = nsx.ns.run(FilesData['ServerPreparer'].path, { threads: 1 }, bestTarget);
+  const prepPid = nsx.ns.run(`./batch-makers/server-prepper.js`, { threads: 1 }, bestTarget);
   nsx.ns.tprint(`tail ${prepPid}`);
 }
 
