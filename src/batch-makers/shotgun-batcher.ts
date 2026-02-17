@@ -5,13 +5,16 @@ import { ExpandedNS } from '@/libs/ExpandedNS';
 import { PortHelpers } from '@/libs/Ports';
 import { AutocompleteData, NS, ScriptArg } from '@ns';
 
-/** @description How deep the shotgun batcher will go before stopping
+/**
+ * How deep the shotgun batcher will go before stopping
  *
  * The function will change how much it steals by targetServerMaxMoney / (2^RESOLUTION)
  */
 const RESOLUTION = 8;
 
 export async function main(ns: NS) {
+  if (performance.now() < 10000) await ns.asleep(10000);
+
   const nsx = new ExpandedNS(ns);
 
   if (ns.args.length != 1 || typeof ns.args[0] !== `string`) {
@@ -20,9 +23,9 @@ export async function main(ns: NS) {
   ./batch-makers/shotgun-batcher.js foodnstuff`);
     return;
   }
-
   ns.disableLog(`ALL`);
   ns.enableLog(`print`);
+
   const targetName: string = ns.args[0];
   const sgBatcher = new ShotgunBatcher(nsx, new RamNet(nsx), targetName);
   let batches = sgBatcher.createBatchesList();

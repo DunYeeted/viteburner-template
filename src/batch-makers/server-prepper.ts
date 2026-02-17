@@ -7,7 +7,10 @@ import { RamNet } from '@/libs/controller-functions/RamNet';
 import { FilesData } from '@/libs/FilesData';
 
 export async function main(ns: NS) {
+  if (performance.now() < 10000) await ns.asleep(10000);
+
   const nsx = new ExpandedNS(ns);
+
   if (ns.args.length != 1 || typeof ns.args[0] !== `string`) {
     ns.tprint(`Incorrect usage!:
       ./batch-makers/server-prepper.js <server>
