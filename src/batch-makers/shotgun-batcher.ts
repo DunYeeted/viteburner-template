@@ -57,19 +57,22 @@ export async function main(ns: NS) {
     clearInterval(logger);
   });
 
-  const port = ns.getPortHandle(portNum);
+  // const port = ns.getPortHandle(portNum);
 
   while (sgBatcher.isPrepped) {
     // Run batchList
     endTime = await sgBatcher.runAllBatches(batches);
     // Wait for the scripts to finish
-    await sgBatcher.waitForFinish(port);
+    await sgBatcher.waitForFinish(endTime);
     // Finished this run through
     // Check if we levelled up
     // If we did, restart the script
     if (ns.getHackingLevel() != sgBatcher.lvl) {
       ns.print(`Levelled up, restarting...`);
+
       sgBatcher.resetNetwork();
+      sgBatcher.updatePlayerStats();
+
       batches = sgBatcher.createBatchesList();
       sgBatcher.hackTime = ns.getHackTime(targetName);
     }

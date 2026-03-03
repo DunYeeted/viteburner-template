@@ -13,7 +13,7 @@ export abstract class Batcher {
   protected readonly minSecurity: number;
   /** The server's growth parameter */
   readonly serverGrowth: number;
-  readonly playerGrowthMulti: number;
+  protected playerGrowthMulti: number;
   readonly bitnodeGrowthMulti: number;
 
   public lvl: number;
@@ -38,6 +38,15 @@ export abstract class Batcher {
   abstract createBatchesList(): BatchList;
 
   /**
+   * updatePlayerStats
+   */
+  public updatePlayerStats() {
+    const player = this.nsx.ns.getPlayer();
+    this.playerGrowthMulti = player.mults.hacking_grow;
+    this.lvl = player.skills.hacking;
+  }
+
+  /**
    * Checks if a server has the maximum amount of money and minimum security
    * @param ns
    * @param server
@@ -50,7 +59,7 @@ export abstract class Batcher {
     );
   }
 
-  public resetNetwork() {
+  public resetNetwork(): void {
     this.network = new RamNet(this.nsx);
   }
 
@@ -124,7 +133,7 @@ export abstract class Batcher {
    *
    * @example Batcher.startSignal(performance.now() + Batcher.weakenTime());
    */
-  public async sendStartSignal(endTime: number) {
+  public async sendStartSignal(endTime: number): Promise<void> {
     this.checkPortNum();
     this.nsx.ns.writePort(this.port, endTime);
     // For whatever reason, the port gets cleared right here
@@ -135,17 +144,20 @@ export abstract class Batcher {
     this.nsx.ns.clearPort(this.port);
   }
 
-  public async waitForFinish(port: NetscriptPort) {
+  public async waitForFinish(endTime: number): Promise<void> {
+    await this.nsx.ns.asleep(endTime - performance.now());
     do {
-      if (port.empty()) await port.nextWrite();
-      this.runningScripts.splice(this.runningScripts.indexOf(port.read()), 1);
+      await this.nsx.ns.asleep(1000);
+      this.runningScripts = this.runningScripts.filter((pid) => {
+        this.nsx.ns.isRunning(pid);
+      });
     } while (this.runningScripts.length > 0);
 
     this.runningScripts = [];
     return;
   }
 
-  private checkPortNum() {
+  private checkPortNum(): void {
     if (this.port == PortErrors.UNDEFINED_PORT_NUM_ERROR)
       this.nsx.scriptError(`Tried to call a deployment function before assigning this script's port`);
   }
@@ -254,7 +266,7 @@ export class JobHelpers {
     return j.hostServer == undefined;
   }
 
-  /** @description Calculates the number of threads for a given hackThread count */
+  /** @description Calculates the number of threads for a given thread count */
   static calcWeakenThreads(type: JobTypes, threads: number) {
     const typeMult = type == JobTypes.hack ? 1 : 2;
     return (threads * WeakenInfo.fortifyAmt * typeMult) / WeakenInfo.weakenAmt;
@@ -262,9 +274,9 @@ export class JobHelpers {
 
   /** @description Cost to run a single thread of each script */
   static ThreadCosts = {
-    hack: FilesData['HackWorker'].ramCost,
-    grow: FilesData['GrowWorker'].ramCost,
-    weaken: FilesData['WeakenWorker'].ramCost,
+    hack: 1.7,
+    grow: 1.75,
+    weaken: 1.75,
   };
 
   /** @description Paths to each scripts */

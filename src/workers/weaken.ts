@@ -14,7 +14,7 @@ export async function main(ns: NS) {
   const waitingTime = endTime - args.workTime;
 
   await ns.weaken(args.target, { additionalMsec: waitingTime });
-  port.write(ns.pid);
+  // port.write(ns.pid);
 }
 
 // ns.tprint(ns.peek(args.portNum));

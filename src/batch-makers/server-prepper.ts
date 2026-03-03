@@ -54,7 +54,7 @@ export async function main(ns: NS) {
     PortHelpers.retirePort(nsx, portNum);
     clearInterval(logger);
   });
-  const port = ns.getPortHandle(portNum);
+  // const port = ns.getPortHandle(portNum);
 
   while (!pBatcher.isPrepped) {
     batches = pBatcher.createBatchesList();
@@ -62,13 +62,16 @@ export async function main(ns: NS) {
     endTime = await pBatcher.runAllBatches(batches);
 
     // Wait for the scripts to finish
-    await pBatcher.waitForFinish(port);
+    await pBatcher.waitForFinish(endTime);
 
     // Finished this run through
     // Check if we levelled up
     // If we did, restart the script
     if (ns.getHackingLevel() != pBatcher.lvl) {
       ns.print(`Levelled up, restarting...`);
+
+      pBatcher.updatePlayerStats();
+
       pBatcher.hackTime = ns.getHackTime(targetName);
       await ns.asleep(0);
     }
@@ -77,7 +80,9 @@ export async function main(ns: NS) {
   }
 
   ns.toast(`${targetName} is now prepped! Running attack`, `success`);
-  ns.run(FilesData[`Batcher`].path, { threads: 1 }, targetName);
+  const batcherPid = ns.run(FilesData[`Batcher`].path, { threads: 1 }, targetName);
+  ns.ui.closeTail();
+  ns.ui.openTail(batcherPid);
 }
 
 class PreparerBatcher extends Batcher {
@@ -97,10 +102,7 @@ class PreparerBatcher extends Batcher {
     this.serverMoney = this.nsx.ns.getServerMoneyAvailable(this.targetName);
     const batches: (gwBatch | wBatch)[] = [];
 
-    if (serverCurrSec > this.serverMinSec) {
-      batches.push(...this.weakenServerBatches(serverCurrSec));
-    }
-
+    batches.push(...this.weakenServerBatches(serverCurrSec));
     batches.push(...this.growServerBatches(this.serverMoney));
     return batches;
   }
@@ -109,6 +111,7 @@ class PreparerBatcher extends Batcher {
     const largestServer = this.network.largestServer;
     // First check if we can even run a weaken thread, if not then we just return what we have
     if (largestServer.ram < JobHelpers.ThreadCosts.weaken) return batches;
+    if (currSec <= this.serverMinSec) return batches;
 
     // Next check if we can weaken the server down to it's min
     // Each weaken thread removes 0.05 security
