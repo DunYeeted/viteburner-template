@@ -76,6 +76,7 @@ function findAndAttack(nsx: ExpandedNS) {
   nsx.ns.tprint(bestTarget);
   const prepPid = nsx.ns.run(`./batch-makers/server-prepper.js`, { threads: 1 }, bestTarget);
   nsx.ns.tprint(`tail ${prepPid}`);
+  nsx.ns.ui.openTail(prepPid);
 }
 
 /** Returns a report on the server */
