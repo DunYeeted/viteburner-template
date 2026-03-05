@@ -43,9 +43,9 @@ export async function main(ns: NS) {
     ns.print(`Prepping ${targetName}`);
     ns.print(`Empty ram: ${ns.formatRam(pBatcher.totalRam)}`);
     ns.print(`-- Prep Info --
-  To: $${ns.formatNumber(prospectedMoney)} / $${ns.formatNumber(pBatcher.maxMon)}
+  To: $${ns.formatNumber(prospectedMoney)} / $${ns.formatNumber(pBatcher.maxMoney)}
   Change: $${ns.formatNumber(prospectedMoney - currentMoney, 1)} (${ns.formatPercent(prospectedMoney / currentMoney)})`);
-    ns.print(`Active workers: ${pBatcher.runningScripts.length}`);
+    ns.print(`Active workers: ${pBatcher.workersRunning}`);
     ns.print(`ETA: ${ns.tFormat(endTime - performance.now())}`);
   }, 1000);
 
@@ -86,7 +86,6 @@ export async function main(ns: NS) {
 }
 
 class PreparerBatcher extends Batcher {
-  runningScripts: number[] = [];
   readonly serverMinSec: number;
   /** The amount of money currently on the server */
   private serverMoney: number;
@@ -220,12 +219,12 @@ class PreparerBatcher extends Batcher {
   private getGrowThreads(startingMoney: number) {
     return this.nsx.calculateGrowThreads(
       this.targetName,
-      this.minSecurity,
+      this._minSecurity,
       this.serverGrowth,
       this.playerGrowthMulti,
       this.bitnodeGrowthMulti,
       startingMoney,
-      this.maxMoney,
+      this._maxMoney,
     );
   }
 
@@ -233,7 +232,7 @@ class PreparerBatcher extends Batcher {
     return this.nsx.calculateServerGrowth(
       startingMoney,
       threads,
-      this.minSecurity,
+      this._minSecurity,
       this.serverGrowth,
       this.playerGrowthMulti,
       this.bitnodeGrowthMulti,

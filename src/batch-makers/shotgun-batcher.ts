@@ -30,7 +30,7 @@ export async function main(ns: NS) {
   const sgBatcher = new ShotgunBatcher(nsx, new RamNet(nsx), targetName);
   let batches = sgBatcher.createBatchesList();
 
-  // Now that we're done, check if we made any batches
+  // Once we finish, check if we made any batches
   if (batches.length == 0) {
     nsx.scriptError(`Failed to create any batches for ${sgBatcher.targetName}`);
   }
@@ -41,13 +41,13 @@ export async function main(ns: NS) {
   // ---Logging function---
   const hackChance = ns.hackAnalyzeChance(targetName);
   let endTime = 0;
-  const realStolen = sgBatcher.totalPercentStolen(batches) * hackChance;
+  const prospectPercent = sgBatcher.totalPercentStolen(batches) * hackChance;
   const logger = setInterval(() => {
     ns.clearLog();
     ns.print(`Hacking ${targetName}`);
     ns.print(`Empty ram: ${ns.formatRam(sgBatcher.totalRam)}`);
-    ns.print(`Stealing: $${ns.formatNumber(realStolen * sgBatcher.maxMon)} (${ns.formatPercent(realStolen)})`);
-    ns.print(`Active workers: ${sgBatcher.runningScripts.length}`);
+    ns.print(`Stealing: $${ns.formatNumber(prospectPercent * sgBatcher.maxMoney)} (${ns.formatPercent(prospectPercent)})`);
+    ns.print(`Active workers: ${sgBatcher.workersRunning}`);
     ns.print(`ETA: ${ns.tFormat(endTime - performance.now())}`);
   }, 1000);
 
@@ -83,7 +83,6 @@ export async function main(ns: NS) {
 }
 
 class ShotgunBatcher extends Batcher {
-  public runningScripts: number[] = [];
   public percentSingleThread: number;
   constructor(nsx: ExpandedNS, network: RamNet, targetName: string) {
     super(nsx, network, targetName);
@@ -121,6 +120,8 @@ class ShotgunBatcher extends Batcher {
       // Otherwise, push the batch we created and start over creating another batch
       BatchHelpers.reserveBatch(this.network, bestBatch);
       batches.push(bestBatch);
+      // If there are too many batches, that will cause the game to fucking crash, stop making more
+      if (batches.length >= 250) break;
     }
 
     return batches;
@@ -129,7 +130,7 @@ class ShotgunBatcher extends Batcher {
   private createSingleBatch(percentStealing: number): hwgwBatch | undefined {
     // First, check how many threads are necessary for each job
     const hackThreads = Math.max(
-      Math.floor(this.nsx.ns.hackAnalyzeThreads(this.targetName, percentStealing * this.maxMoney)),
+      Math.floor(this.nsx.ns.hackAnalyzeThreads(this.targetName, percentStealing * this._maxMoney)),
       1,
     );
     const hackCost = hackThreads * JobHelpers.ThreadCosts.hack;
@@ -220,12 +221,12 @@ class ShotgunBatcher extends Batcher {
   private getGrowThreads(hackThreads: number) {
     return this.nsx.calculateGrowThreads(
       this.targetName,
-      this.minSecurity,
+      this._minSecurity,
       this.serverGrowth,
       this.playerGrowthMulti,
       this.bitnodeGrowthMulti,
-      this.maxMoney * (1 - this.percentSingleThread * hackThreads),
-      this.maxMoney,
+      this._maxMoney * (1 - this.percentSingleThread * hackThreads),
+      this._maxMoney,
     );
   }
 }

@@ -1,4 +1,3 @@
-import { NetscriptPort } from '@ns';
 import { ExpandedNS } from '../ExpandedNS';
 import { FilesData } from '../FilesData';
 import { PortErrors } from '../Ports';
@@ -9,30 +8,30 @@ export abstract class Batcher {
   port: number = PortErrors.UNDEFINED_PORT_NUM_ERROR;
   /** @description How long each weaken will take on a server, other timings can be determined from this */
   public hackTime: number;
-  protected readonly maxMoney: number;
-  protected readonly minSecurity: number;
+  protected readonly _maxMoney: number;
+  protected readonly _minSecurity: number;
   /** The server's growth parameter */
-  readonly serverGrowth: number;
+  protected readonly serverGrowth: number;
   protected playerGrowthMulti: number;
-  readonly bitnodeGrowthMulti: number;
+  protected readonly bitnodeGrowthMulti: number;
+
+  private _workersRunning: number;
+  private _lastScriptPID: number;
 
   public lvl: number;
-  constructor(
-    protected readonly nsx: ExpandedNS,
-    protected network: RamNet,
-    readonly targetName: string,
-    public runningScripts: number[] = [],
-  ) {
+  constructor(protected readonly nsx: ExpandedNS, protected network: RamNet, readonly targetName: string) {
     this.hackTime = this.nsx.ns.getHackTime(this.targetName);
-    this.maxMoney = this.nsx.ns.getServerMaxMoney(this.targetName);
-    this.minSecurity = nsx.ns.getServerMinSecurityLevel(targetName);
+    this._maxMoney = this.nsx.ns.getServerMaxMoney(this.targetName);
+    this._minSecurity = nsx.ns.getServerMinSecurityLevel(targetName);
 
     this.serverGrowth = nsx.ns.getServerGrowth(targetName);
     const player = nsx.ns.getPlayer();
     this.playerGrowthMulti = player.mults.hacking_grow;
     this.bitnodeGrowthMulti = 1;
-
     this.lvl = player.skills.hacking;
+
+    this._workersRunning = 0;
+    this._lastScriptPID = 0;
   }
 
   abstract createBatchesList(): BatchList;
@@ -40,7 +39,7 @@ export abstract class Batcher {
   /**
    * updatePlayerStats
    */
-  public updatePlayerStats() {
+  public updatePlayerStats(): void {
     const player = this.nsx.ns.getPlayer();
     this.playerGrowthMulti = player.mults.hacking_grow;
     this.lvl = player.skills.hacking;
@@ -52,10 +51,10 @@ export abstract class Batcher {
    * @param server
    * @returns True if the server has its maximum money and minimum security level
    */
-  public get isPrepped() {
+  public get isPrepped(): boolean {
     return (
-      this.maxMoney == this.nsx.ns.getServerMoneyAvailable(this.targetName) &&
-      this.minSecurity == this.nsx.ns.getServerSecurityLevel(this.targetName)
+      this._maxMoney == this.nsx.ns.getServerMoneyAvailable(this.targetName) &&
+      this._minSecurity == this.nsx.ns.getServerSecurityLevel(this.targetName)
     );
   }
 
@@ -72,12 +71,12 @@ export abstract class Batcher {
     // Run each batch
     let batchNum = 0;
     for (const batch of batches) {
-      this.runningScripts.push(...(await this.deployBatch(batch, batchNum)));
+      await this.deployBatch(batch, batchNum);
       batchNum++;
     }
     await this.nsx.ns.asleep(Timing.buffer);
     // Need to give the start signal to the queued workers
-    const endTime = performance.now() + this.weakenTime + 10;
+    const endTime = performance.now() + this.weakenTime + JobHelpers.BufferTime;
     await this.sendStartSignal(endTime);
 
     return endTime;
@@ -88,10 +87,11 @@ export abstract class Batcher {
    * @returns An array of pids for the started scripts
    * @remarks The exec'd scripts still need to be sent a start signal
    * */
-  private async deployBatch(batch: Batch, batchNum: number): Promise<number[]> {
+  private async deployBatch(batch: Batch, batchNum: number): Promise<void> {
     this.checkPortNum();
-    return batch.map((job, jobNum) => {
-      return this.runJob(
+    let jobNum = 0;
+    for (const job of batch) {
+      this._lastScriptPID = this.runJob(
         {
           hostServer: job.hostServer,
           type: job.type,
@@ -107,7 +107,12 @@ export abstract class Batcher {
         },
         job.threads,
       );
-    });
+      jobNum++;
+      this._workersRunning++;
+      await this.nsx.ns.asleep(0);
+    }
+
+    return;
   }
 
   /**
@@ -148,15 +153,18 @@ export abstract class Batcher {
     await this.nsx.ns.asleep(endTime - performance.now());
     do {
       await this.nsx.ns.asleep(1000);
-      this.runningScripts = this.runningScripts.filter((pid) => {
-        this.nsx.ns.isRunning(pid);
-      });
-    } while (this.runningScripts.length > 0);
+      if (!this.nsx.ns.isRunning(this._lastScriptPID)) {
+        break;
+      }
+    } while (true);
+    this._workersRunning = 0;
 
-    this.runningScripts = [];
     return;
   }
 
+  /**
+   * Checks if the port is undefined, used to throw an error
+   */
   private checkPortNum(): void {
     if (this.port == PortErrors.UNDEFINED_PORT_NUM_ERROR)
       this.nsx.scriptError(`Tried to call a deployment function before assigning this script's port`);
@@ -174,8 +182,12 @@ export abstract class Batcher {
     return this.network.totalRam;
   }
 
-  get maxMon() {
-    return this.maxMoney;
+  get maxMoney(): number {
+    return this._maxMoney;
+  }
+
+  get workersRunning(): number {
+    return this._workersRunning;
   }
 }
 
@@ -278,6 +290,9 @@ export class JobHelpers {
     grow: 1.75,
     weaken: 1.75,
   };
+
+  /** Extra time given in case the script takes too long */
+  static BufferTime = 1000;
 
   /** @description Paths to each scripts */
   static Paths = {
