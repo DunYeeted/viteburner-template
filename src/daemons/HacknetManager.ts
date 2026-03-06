@@ -30,7 +30,7 @@ export async function main(ns: NS) {
   }
 }
 
-function findBestUpgrade(hn: Hacknet): { type: UpgradeType, increasePerCost: number, index: number } {
+function findBestUpgrade(hn: Hacknet): { type: UpgradeType; increasePerCost: number; index: number } {
   let bestOption = { type: UpgradeType.NewNode, increasePerCost: getProduction(1, 1, 1), index: -1 };
   for (let i = 0; i < hn.numNodes(); i++) {
     const node = hn.getNodeStats(i);
