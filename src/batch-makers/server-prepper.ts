@@ -51,6 +51,7 @@ export async function main(ns: NS) {
 
   // Remember to clear the timer and retire the port eventually
   ns.atExit(() => {
+    ns.ui.closeTail();
     PortHelpers.retirePort(nsx, portNum);
     clearInterval(logger);
   });

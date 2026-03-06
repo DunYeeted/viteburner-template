@@ -53,6 +53,7 @@ export async function main(ns: NS) {
 
   // Remember to clear the timer and retire the port eventually
   ns.atExit(() => {
+    ns.ui.closeTail();
     PortHelpers.retirePort(nsx, sgBatcher.port);
     clearInterval(logger);
   });
@@ -79,6 +80,7 @@ export async function main(ns: NS) {
     // Otherwise, loop around again
   }
 
+  ns.run('./batch-makers/server-prepper.js', { preventDuplicates: true, threads: 1 }, targetName);
   nsx.scriptError(`Something went wrong and the server is no longer at ideal stats`);
 }
 
