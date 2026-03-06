@@ -13,6 +13,7 @@ export function autocomplete(data: AutocompleteData, args: ScriptArg[]) {
     Hotkeys.analyze,
     Hotkeys.cnct,
     Hotkeys.buyer,
+    Hotkeys.killAll,
     StateBasedHotkeys.attack,
   ];
 
@@ -51,6 +52,9 @@ export async function main(ns: NS) {
     case Hotkeys.cnct:
       if (typeof ns.args[1] !== `string`) ns.exit();
       ns.tprint(createConnectCommand(getServerOrder(ns, ns.args[1])));
+      break;
+    case Hotkeys.killAll:
+      nsx.clearServers();
       break;
     case StateBasedHotkeys.attack:
       ns.writePort(await PortHelpers.searchForPort(nsx, `os`), StateBasedHotkeys.attack);
@@ -145,4 +149,5 @@ enum Hotkeys {
   analyze = `analyze`,
   buyer = `buyer`,
   cnct = `shortestPath`,
+  killAll = `betterKill`,
 }
