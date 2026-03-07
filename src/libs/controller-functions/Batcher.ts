@@ -62,7 +62,7 @@ export abstract class Batcher {
   public static uploadScripts(nsx: ExpandedNS) {
     nsx.scanAdminServers().forEach((server) => {
       nsx.ns.scp(
-        ['./workers/Constants.js', JobHelpers.Paths.grow, JobHelpers.Paths.weaken, JobHelpers.Paths.hack],
+        ['/workers/Constants.js', JobHelpers.Paths.grow, JobHelpers.Paths.weaken, JobHelpers.Paths.hack],
         server,
         `home`,
       );
@@ -307,9 +307,9 @@ export class JobHelpers {
 
   /** @description Paths to HWG scripts */
   static Paths = {
-    hack: './workers/hack.js',
-    grow: './worker/grow.js',
-    weaken: './worker/weaken.js',
+    hack: '/workers/hack.js',
+    grow: '/workers/grow.js',
+    weaken: '/workers/weaken.js',
   };
 }
 
