@@ -54,7 +54,7 @@ export class RamNet {
     if (s == undefined) throw new Error(`${server} not defined on network!`);
 
     s.ram -= ram;
-    console.log(s);
+    // console.log(s);
 
     this.sortNetwork();
     return;
