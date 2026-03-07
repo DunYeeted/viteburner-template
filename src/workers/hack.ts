@@ -1,10 +1,8 @@
 import { NS } from '@ns';
+import { TIME_BETWEEN_BATCHES, TIME_BETWEEN_JOBS } from './Constants';
 
 // Shouldn't be run manually
 export async function main(ns: NS) {
-  const TIME_BETWEEN_BATCHES = 1;
-  const TIME_BETWEEN_JOBS = 1;
-
   const args = JSON.parse(ns.args[0] as string);
 
   // Batchers' portNum is -4 when undefined
