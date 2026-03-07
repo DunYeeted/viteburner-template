@@ -23,9 +23,7 @@ export async function main(ns: NS) {
   const targetName: string = ns.args[0];
 
   // Send HGW scripts to the servers
-  nsx.scanAdminServers().forEach((server) => {
-    ns.scp([JobHelpers.Paths.grow, JobHelpers.Paths.weaken, JobHelpers.Paths.hack], server, `home`);
-  });
+  Batcher.uploadScripts(nsx);
 
   const pBatcher = new PreparerBatcher(nsx, new RamNet(nsx), targetName);
 

@@ -23,8 +23,11 @@ export async function main(ns: NS) {
   ./batch-makers/shotgun-batcher.js foodnstuff`);
     return;
   }
+
   ns.disableLog(`ALL`);
   ns.enableLog(`print`);
+
+  Batcher.uploadScripts(nsx);
 
   const targetName: string = ns.args[0];
   const sgBatcher = new ShotgunBatcher(nsx, new RamNet(nsx), targetName);

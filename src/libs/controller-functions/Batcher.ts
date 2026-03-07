@@ -58,6 +58,17 @@ export abstract class Batcher {
     );
   }
 
+  /** Uploads the HGW scripts to all servers */
+  public static uploadScripts(nsx: ExpandedNS) {
+    nsx.scanAdminServers().forEach((server) => {
+      nsx.ns.scp(
+        ['./workers/Constants.js', JobHelpers.Paths.grow, JobHelpers.Paths.weaken, JobHelpers.Paths.hack],
+        server,
+        `home`,
+      );
+    });
+  }
+
   public resetNetwork(): void {
     this.network = new RamNet(this.nsx);
   }
@@ -294,11 +305,11 @@ export class JobHelpers {
   /** Extra time given in case the script takes too long */
   static BufferTime = 1000;
 
-  /** @description Paths to each scripts */
+  /** @description Paths to HWG scripts */
   static Paths = {
-    hack: FilesData['HackWorker'].path,
-    grow: FilesData['GrowWorker'].path,
-    weaken: FilesData['WeakenWorker'].path,
+    hack: './workers/hack.js',
+    grow: './worker/grow.js',
+    weaken: './worker/weaken.js',
   };
 }
 
