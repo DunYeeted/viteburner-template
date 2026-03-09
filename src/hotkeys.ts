@@ -51,6 +51,7 @@ export async function main(ns: NS) {
       break;
     case Hotkeys.cnct:
       if (typeof ns.args[1] !== `string`) ns.exit();
+      if (!ns.serverExists(ns.args[1])) ns.exit();
       ns.tprint(createConnectCommand(getServerOrder(ns, ns.args[1])));
       break;
     case Hotkeys.killAll:
