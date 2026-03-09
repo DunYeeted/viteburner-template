@@ -79,7 +79,7 @@ export async function main(ns: NS) {
   }
 
   ns.toast(`${targetName} is now prepped! Running attack`, `success`);
-  const batcherPid = ns.run(FilesData[`Batcher`].path, { threads: 1 }, targetName);
+  const batcherPid = ns.run('/batch-makers/shotgun-batcher.js', { threads: 1 }, targetName);
   ns.ui.closeTail();
   ns.ui.openTail(batcherPid);
 }
