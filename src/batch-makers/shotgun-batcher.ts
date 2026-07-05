@@ -4,6 +4,11 @@ import { RamNet } from '@/libs/controller-functions/RamNet';
 import { ExpandedNS } from '@/libs/ExpandedNS';
 import { PortHelpers } from '@/libs/Ports';
 import { AutocompleteData, NS, ScriptArg } from '@ns';
+// TODO: This script currently doesn't account for level ups that occur due to jobs, causing the server to become unprepped frequently
+// When the player levels up frequently
+//
+// When the player levels up once or twice over a whole shotgun batch then it doesn't make too much of an issue since the grow threads
+//   overcorrect by default (since they are rounded up) However if they level up >100 times it causes major issues
 
 /**
  * How deep the shotgun batcher will go before stopping
@@ -31,6 +36,10 @@ export async function main(ns: NS) {
 
   const targetName: string = ns.args[0];
   const sgBatcher = new ShotgunBatcher(nsx, new RamNet(nsx), targetName);
+  if (sgBatcher.totalRam < (3 * JobHelpers.ThreadCosts.grow + JobHelpers.ThreadCosts.hack)) {
+    nsx.scriptError(`Unable to create any batches, might not be enough ram
+Is there another batcher script currently running?`);
+  }
   let batches = sgBatcher.createBatchesList();
 
   // Once we finish, check if we made any batches
@@ -44,14 +53,14 @@ export async function main(ns: NS) {
   // ---Logging function---
   const hackChance = ns.hackAnalyzeChance(targetName);
   let endTime = 0;
-  const prospectPercent = sgBatcher.totalPercentStolen(batches) * hackChance;
+  const prospectPercent = sgBatcher.totalPercentStolen(batches) * hackChance * ns.hackAnalyzeChance(targetName);
   const logger = setInterval(() => {
     ns.clearLog();
     ns.print(`Hacking ${targetName}`);
-    ns.print(`Empty ram: ${ns.formatRam(sgBatcher.totalRam)}`);
-    ns.print(`Stealing: $${ns.formatNumber(prospectPercent * sgBatcher.maxMoney)} (${ns.formatPercent(prospectPercent)})`);
+    ns.print(`Empty ram: ${ns.format.ram(sgBatcher.totalRam)}`);
+    ns.print(`Stealing: ~$${ns.format.number(prospectPercent * sgBatcher.maxMoney)} (${ns.format.percent(prospectPercent)})`);
     ns.print(`Active workers: ${sgBatcher.workersRunning}`);
-    ns.print(`ETA: ${ns.tFormat(endTime - performance.now())}`);
+    ns.print(`ETA: ${ns.format.time(endTime - performance.now())}`);
   }, 1000);
 
   // Remember to clear the timer and retire the port eventually
@@ -83,8 +92,8 @@ export async function main(ns: NS) {
     // Otherwise, loop around again
   }
 
-  ns.run('./batch-makers/server-prepper.js', { preventDuplicates: true, threads: 1 }, targetName);
-  nsx.scriptError(`Something went wrong and the server is no longer at ideal stats`);
+  ns.tprint(`Something went wrong and the server is no longer at ideal stats`);
+  ns.spawn('/batch-makers/server-prepper.js', { preventDuplicates: true, threads: 1, spawnDelay: 0 }, targetName);
 }
 
 class ShotgunBatcher extends Batcher {
@@ -98,7 +107,10 @@ class ShotgunBatcher extends Batcher {
   public createBatchesList(): hwgwBatch[] {
     const batches: hwgwBatch[] = [];
     // Create batches
-    while (true) {
+
+    // If there are too many batches, that will cause the game to fucking crash (or start the infinite loop detector), stop making more
+    // Unnecessary if the gap between scripts is high enough
+    while (batches.length <= Batcher.MAX_LIST_SIZE) {
       let bestBatch: hwgwBatch | undefined;
       // Create one singular batch that is as large as possible
       let maxSteal = 1;
@@ -106,6 +118,7 @@ class ShotgunBatcher extends Batcher {
 
       for (let i = 0; i < RESOLUTION; i++) {
         const stealPercent = 0.5 * (maxSteal + minSteal);
+        // this.nsx.ns.tprint(stealPercent);
         const batch = this.createSingleBatch(stealPercent);
 
         // If we failed to create a batch at this steal percent, we need to lower the next steal percent
@@ -125,8 +138,6 @@ class ShotgunBatcher extends Batcher {
       // Otherwise, push the batch we created and start over creating another batch
       BatchHelpers.reserveBatch(this.network, bestBatch);
       batches.push(bestBatch);
-      // If there are too many batches, that will cause the game to fucking crash, stop making more
-      if (batches.length >= 250) break;
     }
 
     return batches;
@@ -139,7 +150,8 @@ class ShotgunBatcher extends Batcher {
       1,
     );
     const hackCost = hackThreads * JobHelpers.ThreadCosts.hack;
-    const growThreads = Math.ceil(this.getGrowThreads(hackThreads));
+    // TODO: Fix getGrowthThreads to save ram
+    const growThreads = Math.ceil(this.nsx.ns.growthAnalyze(this.targetName, 1 / (1 - percentStealing)));
     const growCost = growThreads * JobHelpers.ThreadCosts.grow;
 
     let hackServer: string | undefined;
@@ -219,7 +231,7 @@ class ShotgunBatcher extends Batcher {
     if (batchNum == batches.length) return moneyStolen;
 
     const threads = batches[batchNum][0].threads;
-    moneyStolen += this.percentSingleThread * threads;
+    moneyStolen += Math.min(this.percentSingleThread * threads, this._maxMoney);
     return this.totalPercentStolen(batches, batchNum + 1, moneyStolen);
   }
 

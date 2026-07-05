@@ -1,3 +1,4 @@
+import { NetscriptPort } from '@ns';
 import { ExpandedNS } from './ExpandedNS';
 
 export class PortHelpers {
@@ -15,39 +16,32 @@ export class PortHelpers {
       portName: portName,
     };
     nsx.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
-    const fulfilledRequestPort = nsx.ns.getPortHandle(ReservedPorts.FULFILLED_REQUESTS_PORT);
+    const responsePort = nsx.ns.getPortHandle(ReservedPorts.FULFILLED_REQUESTS_PORT);
 
-    do {
-      // If there is something already, we want to read it immediately
-      // If a lot of scripts keep trying to read from this port, that could cause some issues
-      // By waiting for this, it should slow them down enough to not worry about it
-      await nsx.ns.asleep(0);
-      if (fulfilledRequestPort.empty()) await fulfilledRequestPort.nextWrite();
+    await this.waitForResponse(nsx, responsePort, nsx.ns.pid);
 
-      const possibleFulfilledRequest: FulfilledPortRequest = JSON.parse(
-        nsx.ns.peek(ReservedPorts.FULFILLED_REQUESTS_PORT),
+    // Remove from the queue so other scripts don't try to read this
+    const response = JSON.parse(responsePort.read());
+
+    // Clear the port before using
+    nsx.ns.clearPort(response.portNum);
+
+    // Throw an error if someone else already had this portName
+    if (response.portNum == PortErrors.DUPLICATE_NAME_ERROR) {
+      nsx.scriptError(
+        `Port name is duplicated, usually happens when running a script twice when only supposed to be run once`,
       );
-
-      // This is this script's fulfilled port request
-      if (possibleFulfilledRequest.scriptID == requestArgs.identifier) {
-        // Remove from the queue so other scripts don't try to read this
-        fulfilledRequestPort.read();
-        // Clear the port before using
-        nsx.ns.clearPort(possibleFulfilledRequest.portNum);
-        // Throw an error if someone else already had this portName
-        if (possibleFulfilledRequest.portNum == PortErrors.DUPLICATE_NAME_ERROR)
-          nsx.scriptError(
-            `Port name is duplicated, usually happens when running a script twice when only supposed to be run once`,
-          );
-        if (possibleFulfilledRequest.portNum == PortErrors.MALFORMED_PORT_SEARCH_ERROR)
-          nsx.scriptError(`Port name was undefined`);
-        return possibleFulfilledRequest.portNum;
-      }
-    } while (true);
+    }
+    if (response.portNum == PortErrors.MALFORMED_PORT_SEARCH_ERROR) {
+      nsx.scriptError(`Port name was undefined`);
+    }
+    return response.portNum;
   }
 
   /**
    * Find a port from the portName
+   *
+   * Refer to requestPort for more detailed comments
    * @param portName The port to search for
    * @returns The portNum that portName is assigned to
    */
@@ -58,30 +52,18 @@ export class PortHelpers {
       portName: portName,
     };
     nsx.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
-    const fulfilledRequestPort = nsx.ns.getPortHandle(ReservedPorts.FULFILLED_REQUESTS_PORT);
+    const responsePort = nsx.ns.getPortHandle(ReservedPorts.FULFILLED_REQUESTS_PORT);
 
-    do {
-      // If there is something already, we want to read it immediately
-      // If a lot of scripts keep trying to read from this port, that could cause some issues
-      // By waiting for this, it should slow them down enough to not worry about it
-      await nsx.ns.asleep(0);
-      if (fulfilledRequestPort.empty()) await fulfilledRequestPort.nextWrite();
+    await this.waitForResponse(nsx, responsePort, nsx.ns.pid);
 
-      const possibleFulfilledRequest: FulfilledPortRequest = JSON.parse(
-        nsx.ns.peek(ReservedPorts.FULFILLED_REQUESTS_PORT),
+    const response = JSON.parse(responsePort.read());
+
+    // Do not need to look for malformed request, since this function would have caught it before sending it
+    if (response.portNum == PortErrors.UNDEFINED_NAME_ERROR)
+      nsx.scriptError(
+        `Port name is undefined, usually happens when asking for a script's port before the script exists`,
       );
-
-      if (possibleFulfilledRequest.scriptID == requestArgs.identifier) {
-        // Discard this so no other script tries to read it.
-        fulfilledRequestPort.read();
-        // Do not need to look for malformed request, since this function would have caught it before sending it
-        if (possibleFulfilledRequest.portNum == PortErrors.UNDEFINED_NAME_ERROR)
-          throw new Error(
-            `Port name is undefined, usually happens when asking for a script's port before the script exists`,
-          );
-        return possibleFulfilledRequest.portNum;
-      }
-    } while (true);
+    return response.portNum;
   }
 
   /**
@@ -95,6 +77,21 @@ export class PortHelpers {
       portName: portName,
     };
     nsx.ns.writePort(ReservedPorts.REQUEST_PORT, JSON.stringify(requestArgs));
+  }
+
+  private static async waitForResponse(nsx: ExpandedNS, responsePort: NetscriptPort, scriptID: number): Promise<void> {
+    while (true) {
+      // If there is something already, we want to read it immediately
+      // If a lot of scripts keep trying to read from this port, that could cause some issues
+      // By waiting for this, it should slow them down enough to not worry about it
+      await nsx.ns.asleep(0);
+      if (responsePort.empty()) await responsePort.nextWrite();
+
+      const possibleResponse: FulfilledPortRequest = JSON.parse(responsePort.peek());
+
+      // This is this script's fulfilled port request
+      if (possibleResponse.scriptID == scriptID) break;
+    }
   }
 }
 

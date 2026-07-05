@@ -4,7 +4,6 @@ import { PortHelpers } from '@/libs/Ports';
 import { JobHelpers, gwBatch, wBatch, Batcher } from '@/libs/controller-functions/Batcher';
 import { JobTypes, WeakenInfo } from '@/libs/controller-functions/Constants';
 import { RamNet } from '@/libs/controller-functions/RamNet';
-import { FilesData } from '@/libs/FilesData';
 
 export async function main(ns: NS) {
   if (performance.now() < 10000) await ns.asleep(10000);
@@ -39,12 +38,12 @@ export async function main(ns: NS) {
     const currentMoney = Math.max(ns.getServerMoneyAvailable(targetName), 1);
     ns.clearLog();
     ns.print(`Prepping ${targetName}`);
-    ns.print(`Empty ram: ${ns.formatRam(pBatcher.totalRam)}`);
+    ns.print(`Empty ram: ${ns.format.ram(pBatcher.totalRam)}`);
     ns.print(`-- Prep Info --
-  To: $${ns.formatNumber(prospectedMoney)} / $${ns.formatNumber(pBatcher.maxMoney)}
-  Change: $${ns.formatNumber(prospectedMoney - currentMoney, 1)} (${ns.formatPercent(prospectedMoney / currentMoney)})`);
+  To: $${ns.format.number(prospectedMoney)} / $${ns.format.number(pBatcher.maxMoney)}
+  Change: $${ns.format.number(prospectedMoney - currentMoney, 1)} (${ns.format.percent(prospectedMoney / currentMoney)})`);
     ns.print(`Active workers: ${pBatcher.workersRunning}`);
-    ns.print(`ETA: ${ns.tFormat(endTime - performance.now())}`);
+    ns.print(`ETA: ${ns.format.time(endTime - performance.now())}`);
   }, 1000);
 
   // Remember to clear the timer and retire the port eventually

@@ -4,6 +4,7 @@ import { NetscriptPort, NS } from '@ns';
 
 export async function main(ns: NS) {
   const nsx = new PortNSX(ns);
+  ns.disableLog('kill');
 
   if (ns.args.length != 0)
     nsx.scriptError(
@@ -112,7 +113,13 @@ class PortNSX extends ExpandedNS {
     } else {
       this.nextFreePort++;
     }
-    this.givePort({ scriptID: request.identifier, portNum: port });
+
+    const data: FulfilledPortRequest = {
+      scriptID: request.identifier,
+      portNum: port,
+    };
+
+    this.givePort(data);
     if (request.portName !== null) this.namedPorts.set(request.portName, port);
   }
 

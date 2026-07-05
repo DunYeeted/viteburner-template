@@ -40,44 +40,28 @@ export class ExpandedNS {
    */
   fullRoot(): void {
     this.scanServers().forEach((server) => {
-      switch (this.ns.getServerNumPortsRequired(server)) {
-        case 5:
-          try {
-            this.ns.sqlinject(server);
-          } catch {
-            return;
-          }
-        // eslint-disable-next-line no-fallthrough
-        case 4:
-          try {
-            this.ns.httpworm(server);
-          } catch {
-            return;
-          }
-        // eslint-disable-next-line no-fallthrough
-        case 3:
-          try {
-            this.ns.relaysmtp(server);
-          } catch {
-            return;
-          }
-        // eslint-disable-next-line no-fallthrough
-        case 2:
-          try {
-            this.ns.ftpcrack(server);
-          } catch {
-            return;
-          }
-        // eslint-disable-next-line no-fallthrough
-        case 1:
-          try {
-            this.ns.brutessh(server);
-          } catch {
-            return;
-          }
-      }
-      if (this.ns.nuke(server)) this.ns.toast(`Rooted ${server}`, `success`, 50);
+      if (this.root(server)) this.ns.toast(`Rooted ${server}`, `success`, 50);
     });
+  }
+
+  private root(server: string): boolean {
+    switch (this.ns.getServerNumPortsRequired(server)) {
+      case 5:
+        if (!this.ns.sqlinject(server)) return false;
+      // eslint-disable-next-line no-fallthrough
+      case 4:
+        if (!this.ns.httpworm(server)) return false;
+      // eslint-disable-next-line no-fallthrough
+      case 3:
+        if (!this.ns.relaysmtp(server)) return false;
+      // eslint-disable-next-line no-fallthrough
+      case 2:
+        if (!this.ns.ftpcrack(server)) return false;
+      // eslint-disable-next-line no-fallthrough
+      case 1:
+        if (!this.ns.brutessh(server)) return false;
+    }
+    return this.ns.nuke(server);
   }
 
   /**
@@ -208,14 +192,14 @@ export class ExpandedNS {
 
   /**
    * Terminates all scripts on all servers
-   * @param runHome Whether to restart adaOS
+   * @param runHome Whether to also terminate scripts on home
    */
   clearServers(runHome = true): never {
     this.scanAdminServers().forEach((server) => {
       this.ns.killall(server, runHome);
     });
 
-    this.ns.spawn(`./daemons/adaOS.js`);
+    // this.ns.spawn(`./daemons/adaOS.js`);
     // Spawn already terminates the current script, this is just for the script to properly return 'never'
     this.ns.exit();
   }
@@ -233,10 +217,14 @@ export class ExpandedNS {
     );
   }
 
-  /** Throws an error, killing the current script */
-  scriptError(errorMessage: string): never {
+  /**
+   * Throw an error message while killing the current script
+   * @param errorMessage The error to show
+   * */
+  scriptError(errorMessage: string, kill = true): never | void {
     this.ns.tprint(errorMessage);
     this.ns.print(`Error!\n` + errorMessage);
-    throw new Error(errorMessage);
+    this.ns.toast(errorMessage, 'error');
+    if (kill) throw new Error(errorMessage);
   }
 }

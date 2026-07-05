@@ -41,4 +41,4 @@ export const FilesData: {
     filename: `server-prepper.js`,
     ramCost: 0,
   },
-};
+} as const;

@@ -86,28 +86,38 @@ function findAndAttack(nsx: ExpandedNS) {
 
 /** Returns a report on the server */
 function analyzeServer(ns: NS, server: string) {
-  const serv = ns.getServer(server);
+  const usedRam = ns.getServerUsedRam(server);
+  const totalRam = ns.getServerMaxRam(server);
+
+  const hackingLvl = ns.getServerRequiredHackingLevel(server);
+
+  const currMoney = ns.getServerMoneyAvailable(server);
+  const maxMoney = ns.getServerMaxMoney(server);
+
+  const currSec = ns.getServerSecurityLevel(server);
+  const minSec = ns.getServerMinSecurityLevel(server);
+
   const output = `
 Name: ${ns.args[1]}
-Root access: ${serv.hasAdminRights ? `YES` : `NO`}
-RAM: ${ns.formatRam(serv.ramUsed)} Used / ${ns.formatRam(serv.maxRam)} total
-Bought: ${serv.purchasedByPlayer ? `YES` : `NO`}
+Root access: ${ns.hasRootAccess(server) ? `YES` : `NO`}
+RAM: ${ns.format.ram(usedRam)} Used / ${ns.format.ram(totalRam)} total
 Hacking info:
-  Level: ${serv.requiredHackingSkill}
-  Money: $${ns.formatNumber(serv.moneyAvailable ?? 0)} / $${ns.formatNumber(serv.moneyMax ?? 0)}
-  Security: ${ns.formatNumber(serv.hackDifficulty ?? 0)} / ${ns.formatNumber(serv.minDifficulty ?? 0)}
+  Level: ${hackingLvl}
+  Money: $${ns.format.number(currMoney ?? 0)} / $${ns.format.number(maxMoney ?? 0)}
+  Security: ${ns.format.number(currSec ?? 0)} / ${ns.format.number(minSec ?? 0)}
 `;
   return output;
+  // Bought: ${serv.purchasedByPlayer ? `YES` : `NO`}
 }
 
 /** Finds the servers to connect to in order to get to a specified server */
 function getServerOrder(ns: NS, destination: string) {
   const tree = serversTree(ns);
-  let recentServer: string = destination;
-  const order = [recentServer];
-  while (recentServer !== `home`) {
-    recentServer = tree.get(recentServer) ?? ``;
-    order.unshift(recentServer);
+  let nextServer: string = destination;
+  const order = [nextServer];
+  while (nextServer !== `home`) {
+    nextServer = tree.get(nextServer) ?? ``;
+    order.unshift(nextServer);
   }
 
   return order;
@@ -123,6 +133,11 @@ function createConnectCommand(servers: string[]): string {
   return runStr;
 }
 
+/**
+ * Runs a BFS to find every server in the network
+ * @param ns
+ * @returns A tree of all servers in the network
+ */
 function serversTree(ns: NS): Map<string, string> {
   const servers: string[] = [`home`];
   const serverTree: Map<string, string> = new Map();

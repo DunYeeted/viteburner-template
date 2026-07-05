@@ -1,11 +1,12 @@
 import { ExpandedNS } from '../ExpandedNS';
-import { FilesData } from '../FilesData';
 import { PortErrors } from '../Ports';
 import { JobTypes, Timing, WeakenInfo } from './Constants';
 import { RamNet } from './RamNet';
 
 export abstract class Batcher {
   port: number = PortErrors.UNDEFINED_PORT_NUM_ERROR;
+  /** @description The max size of the batch list before the batcher should stop */
+  static MAX_LIST_SIZE = 1000;
   /** @description How long each weaken will take on a server, other timings can be determined from this */
   public hackTime: number;
   protected readonly _maxMoney: number;
@@ -313,6 +314,7 @@ export class JobHelpers {
   };
 }
 
+/** For reserving batches and analyzing batches list */
 export class BatchHelpers {
   /** Unreserves the ram for this batch on ramnet */
   static reserveBatch(network: RamNet, batch: Batch): void {
@@ -327,4 +329,23 @@ export class BatchHelpers {
       network.unreserveRam(job.hostServer, JobHelpers.calculateJobCost(job));
     }
   }
+
+  // static analysis: BatchAnalyzers = {
+  //   growth(batches) {
+  //       return this.nsx.calculateServerGrowth(
+  //       startingMoney,
+  //       threads,
+  //       this._minSecurity,
+  //       this.serverGrowth,
+  //       this.playerGrowthMulti,
+  //       this.bitnodeGrowthMulti,
+  //     );
+  //   }
+  // }
 }
+
+// interface BatchAnalyzers {
+//   growth(batches: gBatch[]): number;
+//   steal(batches: hwgwBatch[]): number;
+//   security(batches: wBatch[]): number;
+// }

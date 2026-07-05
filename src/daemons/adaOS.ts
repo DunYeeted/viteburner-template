@@ -1,6 +1,7 @@
 import { ExpandedNS } from '@/libs/ExpandedNS';
 import { NS } from '@ns';
 import { FilesData } from '@/libs/FilesData';
+import { PortHelpers } from '@/libs/Ports';
 
 let nsx: ExpandedNS;
 
@@ -15,26 +16,26 @@ export async function main(ns: NS) {
     );
   if (nsx.scriptAlreadyRunning()) nsx.scriptError(`Error! Another version of this script is already running.`);
 
-  if (nsx.checkForPortController()) {
+  const portControllerRunning = ns.ps().findIndex((process) => {
+    return process.filename === FilesData['PortController'].filename;
+  });
+
+  if (portControllerRunning) {
     ns.run(FilesData['PortController'].path);
     await ns.asleep(100);
   }
 
-  const osPortNumber = await nsx.requestPort(`os`);
+  const osPortNumber = await PortHelpers.requestPort(nsx, `os`);
   const osPort = ns.getPortHandle(osPortNumber);
 
   do {
-    await osPort.nextWrite();
+    if (osPort.empty()) await osPort.nextWrite();
 
-    while (!osPort.empty()) {
-      const request = osPort.read();
-      switch (request) {
-        case StateBasedHotkeys.attack:
-          ns.run(FilesData['Batcher'].path, { threads: 1 }, bestTargetServer(nsx));
-          break;
-        // case StateBasedHotkeys.updateBatcher:
-        //   changeBatcherScript()
-      }
+    const request: string = osPort.read() as string;
+    switch (request) {
+      case StateBasedHotkeys.attack:
+        ns.run(FilesData['Batcher'].path, { threads: 1 }, bestTargetServer(nsx));
+        break;
     }
   } while (true);
 }
@@ -67,12 +68,6 @@ export function bestTargetServer(nsx: ExpandedNS): string {
   return bestServer;
 }
 
-// function changeBatcherScript(newPath: string): void {
-//   BATCHER_SCRIPT_PATH = newPath;
-//   BATCHER_FILENAME = newPath.substring(newPath.lastIndexOf(`\\`) + 1);
-// }
-
 export enum StateBasedHotkeys {
   attack = `attack`,
-  updateBatcher = `update batcher`,
 }

@@ -9,6 +9,7 @@ const ATTEMPT_PERIOD = 1000;
 
 export async function main(ns: NS) {
   const nsx = new ExpandedNS(ns);
+  const c = ns.cloud;
 
   if (ns.args.length == 0 || !Number.isInteger(ns.args[0])) {
     ns.alert(buyInfo(ns));
@@ -27,27 +28,32 @@ export async function main(ns: NS) {
 
   const wishRam: number = ns.args[0];
 
-  const maxServers = ns.getPurchasedServerLimit();
-  const boughtServers = ns.getPurchasedServers();
-  const purchaseCost = ns.getPurchasedServerCost(wishRam);
+  const maxServers = c.getServerLimit();
+  const boughtServers = c.getServerNames();
+  const purchaseCost = c.getServerCost(wishRam);
 
   for (let i = 0; i < maxServers; i++) {
+    // Looking only at servers we've already bought
     if (i < boughtServers.length) {
+      // If the server we're looking at has the same or more ram than we're buying, leave it alone
       if (ns.getServerMaxRam(boughtServers[i]) >= wishRam) continue;
-      while (!ns.upgradePurchasedServer(boughtServers[i], wishRam)) {
+      // If the server we're looking at has less ram, wait until we have more than enough
+      while (c.getServerUpgradeCost(boughtServers[i], wishRam) > ns.getServerMoneyAvailable(`home`)) {
         await ns.asleep(ATTEMPT_PERIOD);
       }
+      c.upgradeServer(boughtServers[i], wishRam);
     } else {
+      // Purchasing new servers
       while (ns.getServerMoneyAvailable(`home`) < purchaseCost) {
         await ns.asleep(ATTEMPT_PERIOD);
       }
 
       const name = PREFIX_FUNCTION(i);
-      ns.purchaseServer(name, wishRam);
+      c.purchaseServer(name, wishRam);
     }
   }
 
-  ns.toast(`Finished buying ${maxServers} servers with ${ns.formatRam(wishRam)} each`);
+  ns.toast(`Finished buying ${maxServers} servers with ${ns.format.ram(wishRam)} each`);
 }
 
 function buyInfo(ns: NS) {
@@ -55,12 +61,12 @@ function buyInfo(ns: NS) {
   for (let i = 1; i <= 20; i++) {
     const ram = Math.pow(2, i);
     info += `\n`;
-    info += ns.formatRam(ram).padEnd(10, i % 2 == 0 ? `-` : `.`);
-    info += `$${ns.formatNumber(ns.getPurchasedServerCost(ram))}`;
+    info += ns.format.ram(ram).padEnd(10, i % 2 == 0 ? `-` : `.`);
+    info += `$${ns.format.number(ns.cloud.getServerCost(ram))}`;
   }
 
   info += `\n\n`;
-  info += `Currently owned: ${ns.getPurchasedServers().length}`;
+  info += `Currently owned: ${ns.cloud.getServerNames().length}`;
 
   return info;
 }
